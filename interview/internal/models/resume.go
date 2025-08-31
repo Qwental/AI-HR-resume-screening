@@ -11,4 +11,5 @@ type Resume struct {
 	FileURL   string         `json:"file_url,omitempty"`
 	Text      datatypes.JSON `gorm:"type:jsonb" json:"text_jsonb,omitempty"`
 	CreatedAt time.Time      `json:"created_at"`
+	Result    datatypes.JSON `gorm:"type:jsonb" json:"result_jsonb,omitempty"`
 }
