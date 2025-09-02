@@ -21,7 +21,7 @@ services:
       - ai-hr-network
 
   app:
-    build: .
+    build: ..
     container_name: ai-hr-service
     ports:
       - "8080:8080"
