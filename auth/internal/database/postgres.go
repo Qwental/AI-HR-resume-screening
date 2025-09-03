@@ -2,7 +2,7 @@ package database
 
 import (
 	"ai-hr-service/internal/config"
-	"ai-hr-service/internal/models"
+	_ "ai-hr-service/internal/models"
 	"fmt"
 	"log"
 	"time"
@@ -33,9 +33,9 @@ func Connect(cfg config.DatabaseConfig) *gorm.DB {
 	}
 
 	// Автомиграция для всех моделей
-	if err := db.AutoMigrate(&models.User{}, &models.Token{}); err != nil {
-		log.Fatal("Failed to migrate database:", err)
-	}
+	//if err := db.AutoMigrate(&models.User{}, &models.Token{}); err != nil {
+	//	log.Fatal("Failed to migrate database:", err)
+	//}
 
 	log.Println("Database connected successfully")
 	return db
@@ -86,6 +86,10 @@ func createDatabaseIfNotExists(cfg config.DatabaseConfig) error {
 	if err != nil {
 		return fmt.Errorf("failed to check if database exists: %v", err)
 	}
+
+	//var count int64
+	//checkQuery := "SELECT COUNT(*) FROM pg_database WHERE datname = $1"
+	//err = db.Raw(checkQuery, cfg.DBName).Scan(&count).Error
 
 	if count == 0 {
 		// Создаем базу данных

@@ -2,6 +2,7 @@ package auth
 
 import (
 	"ai-hr-service/internal/utils"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -20,6 +21,11 @@ func (h *Handler) Register(c *gin.Context) {
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := req.Validate(); err != nil {
+		log.Printf("REGISTER Validation failed for user %s: %v", req.Username, err)
 		return
 	}
 
@@ -45,6 +51,11 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
+	if err := req.Validate(); err != nil {
+		log.Printf("LOGIN Validation failed for user %s: %v", req.Email, err)
+		return
+	}
+
 	response, err := h.service.Login(req)
 	if err != nil {
 		status := http.StatusInternalServerError
@@ -66,6 +77,11 @@ func (h *Handler) RefreshToken(c *gin.Context) {
 		return
 	}
 
+	if err := req.Validate(); err != nil {
+		log.Printf("LOGIN Validation failed for user %v", err)
+		return
+	}
+
 	response, err := h.service.RefreshTokens(req)
 	if err != nil {
 		status := http.StatusUnauthorized
@@ -84,6 +100,11 @@ func (h *Handler) Logout(c *gin.Context) {
 	var req LogoutRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := req.Validate(); err != nil {
+		log.Printf("Logout Validation failed for user %v", err)
 		return
 	}
 
