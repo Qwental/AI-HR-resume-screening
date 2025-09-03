@@ -1,5 +1,5 @@
-# Простой Dockerfile для Go приложения
-FROM golang:1.22-alpine AS builder
+# Dockerfile для Go приложения
+FROM golang:1.23-alpine AS builder
 
 # Устанавливаем git для загрузки зависимостей
 RUN apk add --no-cache git
@@ -10,8 +10,8 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Копируем весь код
-COPY .. .
+# Копируем весь код (исправляем путь)
+COPY . .
 
 # Собираем приложение
 RUN go build -o main ./cmd/server/main.go

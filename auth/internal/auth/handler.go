@@ -48,7 +48,7 @@ func (h *Handler) Login(c *gin.Context) {
 	response, err := h.service.Login(req)
 	if err != nil {
 		status := http.StatusInternalServerError
-		if err.Error() == "invalid credentials" {
+		if err.Error() == "invalid credentials" || err.Error() == "account is deactivated" {
 			status = http.StatusUnauthorized
 		}
 		utils.ErrorResponse(c, status, err.Error())
@@ -56,6 +56,59 @@ func (h *Handler) Login(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, response)
+}
+
+// RefreshToken обновляет токены
+func (h *Handler) RefreshToken(c *gin.Context) {
+	var req RefreshTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	response, err := h.service.RefreshTokens(req)
+	if err != nil {
+		status := http.StatusUnauthorized
+		if err.Error() == "invalid or expired refresh token" {
+			status = http.StatusUnauthorized
+		}
+		utils.ErrorResponse(c, status, err.Error())
+		return
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, response)
+}
+
+// Logout выходит из системы (отзывает refresh token)
+func (h *Handler) Logout(c *gin.Context) {
+	var req LogoutRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := h.service.Logout(req); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	utils.MessageResponse(c, http.StatusOK, "Successfully logged out")
+}
+
+// LogoutAll выходит из всех устройств (отзывает все refresh токены пользователя)
+func (h *Handler) LogoutAll(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		utils.ErrorResponse(c, http.StatusUnauthorized, "user ID not found")
+		return
+	}
+
+	if err := h.service.LogoutAll(userID.(uint)); err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	utils.MessageResponse(c, http.StatusOK, "Successfully logged out from all devices")
 }
 
 // GetProfile возвращает профиль текущего пользователя
@@ -77,16 +130,4 @@ func (h *Handler) GetProfile(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, ProfileResponse{User: *user})
-}
-
-// Protected тестовый защищенный endpoint
-func (h *Handler) Protected(c *gin.Context) {
-	username, _ := c.Get("username")
-	role, _ := c.Get("role")
-
-	utils.SuccessResponse(c, http.StatusOK, gin.H{
-		"message":  "This is a protected endpoint",
-		"username": username,
-		"role":     role,
-	})
 }

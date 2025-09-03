@@ -12,15 +12,22 @@ import (
 type Service interface {
 	Register(req RegisterRequest) (*LoginResponse, error)
 	Login(req LoginRequest) (*LoginResponse, error)
+	RefreshTokens(req RefreshTokenRequest) (*RefreshTokenResponse, error)
+	Logout(req LogoutRequest) error
+	LogoutAll(userID uint) error
 	GetProfile(userID uint) (*models.User, error)
 }
 
 type service struct {
-	repo Repository
+	repo         Repository
+	tokenService *TokenService
 }
 
-func NewService(repo Repository) Service {
-	return &service{repo: repo}
+func NewService(repo Repository, tokenService *TokenService) Service {
+	return &service{
+		repo:         repo,
+		tokenService: tokenService,
+	}
 }
 
 func (s *service) Register(req RegisterRequest) (*LoginResponse, error) {
@@ -42,26 +49,30 @@ func (s *service) Register(req RegisterRequest) (*LoginResponse, error) {
 
 	// Создаем пользователя
 	user := &models.User{
-		Username: req.Username,
-		Surname:  req.Surname,
-		Email:    req.Email,
-		Password: hashedPassword,
-		Role:     "hr",
+		Username:     req.Username,
+		Surname:      req.Surname,
+		Email:        req.Email,
+		PasswordHash: hashedPassword,  // изменено на PasswordHash
+		Role:         "hr_specialist", // обновлено на новую роль
+		IsActive:     true,
 	}
 
 	if err := s.repo.CreateUser(user); err != nil {
 		return nil, errors.New("failed to create user")
 	}
 
-	// Генерируем токен
-	token, err := utils.GenerateToken(*user)
+	// Создаем токены
+	accessToken, refreshToken, err := s.tokenService.CreateTokenPair(*user)
 	if err != nil {
-		return nil, errors.New("failed to generate token")
+		return nil, errors.New("failed to generate tokens")
 	}
 
 	return &LoginResponse{
-		Token: token,
-		User:  *user,
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		TokenType:    "Bearer",
+		ExpiresIn:    1800, // 30 минут для JWT
+		User:         *user,
 	}, nil
 }
 
@@ -75,21 +86,51 @@ func (s *service) Login(req LoginRequest) (*LoginResponse, error) {
 		return nil, err
 	}
 
+	// Проверяем активность пользователя
+	if !user.IsActive {
+		return nil, errors.New("account is deactivated")
+	}
+
 	// Проверяем пароль
-	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
 		return nil, errors.New("invalid credentials")
 	}
 
-	// Генерируем токен
-	token, err := utils.GenerateToken(*user)
+	// Создаем токены
+	accessToken, refreshToken, err := s.tokenService.CreateTokenPair(*user)
 	if err != nil {
-		return nil, errors.New("failed to generate token")
+		return nil, errors.New("failed to generate tokens")
 	}
 
 	return &LoginResponse{
-		Token: token,
-		User:  *user,
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		TokenType:    "Bearer",
+		ExpiresIn:    1800, // 30 минут для JWT
+		User:         *user,
 	}, nil
+}
+
+func (s *service) RefreshTokens(req RefreshTokenRequest) (*RefreshTokenResponse, error) {
+	accessToken, refreshToken, err := s.tokenService.RefreshTokens(req.RefreshToken)
+	if err != nil {
+		return nil, err
+	}
+
+	return &RefreshTokenResponse{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		TokenType:    "Bearer",
+		ExpiresIn:    1800, // 30 минут для JWT
+	}, nil
+}
+
+func (s *service) Logout(req LogoutRequest) error {
+	return s.tokenService.RevokeRefreshToken(req.RefreshToken)
+}
+
+func (s *service) LogoutAll(userID uint) error {
+	return s.tokenService.RevokeAllUserTokens(userID)
 }
 
 func (s *service) GetProfile(userID uint) (*models.User, error) {

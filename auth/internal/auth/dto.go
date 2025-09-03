@@ -19,8 +19,22 @@ type LoginRequest struct {
 
 // Структуры для ответов
 type LoginResponse struct {
-	Token string      `json:"token"`
-	User  models.User `json:"user"`
+	AccessToken  string      `json:"access_token"`
+	RefreshToken string      `json:"refresh_token"`
+	TokenType    string      `json:"token_type"`
+	ExpiresIn    int         `json:"expires_in"` // в секундах
+	User         models.User `json:"user"`
+}
+
+type RefreshTokenRequest struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
+}
+
+type RefreshTokenResponse struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	TokenType    string `json:"token_type"`
+	ExpiresIn    int    `json:"expires_in"`
 }
 
 type ProfileResponse struct {
@@ -29,4 +43,8 @@ type ProfileResponse struct {
 
 type ErrorResponse struct {
 	Error string `json:"error"`
+}
+
+type LogoutRequest struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
 }

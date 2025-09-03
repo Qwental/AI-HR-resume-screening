@@ -26,7 +26,7 @@ func (r *repository) CreateUser(user *models.User) error {
 
 func (r *repository) GetUserByEmail(email string) (*models.User, error) {
 	var user models.User
-	err := r.db.Where("email = ?", email).First(&user).Error
+	err := r.db.Where("email = ? AND is_active = ?", email, true).First(&user).Error
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +35,7 @@ func (r *repository) GetUserByEmail(email string) (*models.User, error) {
 
 func (r *repository) GetUserByUsername(username string) (*models.User, error) {
 	var user models.User
-	err := r.db.Where("username = ?", username).First(&user).Error
+	err := r.db.Where("username = ? AND is_active = ?", username, true).First(&user).Error
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +44,7 @@ func (r *repository) GetUserByUsername(username string) (*models.User, error) {
 
 func (r *repository) GetUserByID(id uint) (*models.User, error) {
 	var user models.User
-	err := r.db.First(&user, id).Error
+	err := r.db.Where("id = ? AND is_active = ?", id, true).First(&user).Error
 	if err != nil {
 		return nil, err
 	}

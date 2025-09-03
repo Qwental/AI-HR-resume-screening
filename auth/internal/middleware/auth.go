@@ -1,24 +1,33 @@
 package middleware
 
 import (
+	"ai-hr-service/internal/auth"
 	"ai-hr-service/internal/utils"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
-// AuthMiddleware проверяет JWT токен
-// Если токена нет или он говно - отправляем нахуй
-func AuthMiddleware() gin.HandlerFunc {
+type AuthMiddleware struct {
+	tokenService *auth.TokenService
+}
+
+func NewAuthMiddleware(db *gorm.DB) *AuthMiddleware {
+	return &AuthMiddleware{
+		tokenService: auth.NewTokenService(db),
+	}
+}
+
+// TokenAuth проверяет JWT access token
+func (am *AuthMiddleware) TokenAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Получаем токен из заголовка Authorization
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			// значит токена нет
 			utils.ErrorResponse(c, http.StatusUnauthorized, "Authorization header required")
-
-			c.Abort() // Останавливаем выполнение дальнейших middleware
+			c.Abort()
 			return
 		}
 
@@ -30,44 +39,102 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// Валидируем токен на просрочку
+		// Валидируем JWT токен
 		claims, err := utils.ValidateToken(parts[1])
 		if err != nil {
-			// Токен просрочен
-			utils.ErrorResponse(c, http.StatusUnauthorized, "Invalid token")
+			status := http.StatusUnauthorized
+			message := "Invalid or expired token"
+
+			if err.Error() == "user account is deactivated" {
+				message = "User account is deactivated"
+			}
+
+			utils.ErrorResponse(c, status, message)
 			c.Abort()
 			return
 		}
 
-		// Если все ок - сохраняем данные пользователя в контексте
-		// Чтобы другие middleware и хендлеры могли их использовать
+		// Проверяем активность пользователя еще раз (на случай если токен старый)
+		if !claims.IsActive {
+			utils.ErrorResponse(c, http.StatusUnauthorized, "User account is deactivated")
+			c.Abort()
+			return
+		}
+
+		// Сохраняем данные пользователя в контексте
 		c.Set("user_id", claims.UserID)
 		c.Set("username", claims.Username)
 		c.Set("role", claims.Role)
+		c.Set("is_active", claims.IsActive)
 
 		c.Next()
 	}
 }
 
-// RequireRole проверяет роль пользователя
-// Если роль не подходит - отправляем нахуй
-
-func RequireRole(requiredRole string) gin.HandlerFunc {
+// RequireRole проверяет роль пользователя (поддерживает несколько ролей)
+func (am *AuthMiddleware) RequireRole(allowedRoles ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Получаем роль из контекста (должна была быть установлена AuthMiddleware)
-
 		userRole, exists := c.Get("role")
 		if !exists {
 			utils.ErrorResponse(c, http.StatusUnauthorized, "User role not found")
 			c.Abort()
 			return
 		}
-		// Проверяем что роль подходит
 
-		if userRole != requiredRole {
-			utils.ErrorResponse(c, http.StatusForbidden, "Insufficient permissions")
-			c.Abort()
+		roleStr := userRole.(string)
+
+		// Проверяем, есть ли роль пользователя среди разрешенных
+		for _, allowedRole := range allowedRoles {
+			if roleStr == allowedRole {
+				c.Next()
+				return
+			}
+		}
+
+		utils.ErrorResponse(c, http.StatusForbidden, "Insufficient permissions")
+		c.Abort()
+	}
+}
+
+// AdminOnly - только для администраторов
+func (am *AuthMiddleware) AdminOnly() gin.HandlerFunc {
+	return am.RequireRole("admin")
+}
+
+// HROrAdmin - для HR-специалистов и администраторов
+func (am *AuthMiddleware) HROrAdmin() gin.HandlerFunc {
+	return am.RequireRole("hr_specialist", "admin")
+}
+
+// CandidateOnly - только для кандидатов
+func (am *AuthMiddleware) CandidateOnly() gin.HandlerFunc {
+	return am.RequireRole("candidate")
+}
+
+// OptionalAuth - опциональная авторизация (не обязательная)
+func (am *AuthMiddleware) OptionalAuth() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			c.Next()
 			return
+		}
+
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			c.Next()
+			return
+		}
+
+		// Пытаемся валидировать токен
+		if claims, err := utils.ValidateToken(parts[1]); err == nil {
+			c.Set("user_id", claims.UserID)
+			c.Set("username", claims.Username)
+			c.Set("role", claims.Role)
+			c.Set("is_active", claims.IsActive)
+			c.Set("authenticated", true)
+		} else {
+			c.Set("authenticated", false)
 		}
 
 		c.Next()

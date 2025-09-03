@@ -1,27 +1,27 @@
-version: '3.8'
-
 services:
   db:
     image: postgres:15
     container_name: ai-hr-service-db
     environment:
-      POSTGRES_DB: ai_hr_service_db
+      POSTGRES_DB: postgres
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
     ports:
-      - "5433:5432"  # External access on port 5433
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 10s
     networks:
       - ai-hr-network
 
   app:
-    build: ..
+    build: .
     container_name: ai-hr-service
     ports:
       - "8080:8080"
@@ -31,8 +31,10 @@ services:
       DB_USER: postgres
       DB_PASSWORD: password
       DB_NAME: ai_hr_service_db
-      JWT_SECRET: ${JWT_SECRET:-your-secret-key}
-      JWT_TTL: ${JWT_TTL:-24h}
+      JWT_SECRET: ${JWT_SECRET:-your-very-long-and-secure-jwt-secret-key-at-least-32-characters-long}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-30m}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-7d}
+      GIN_MODE: ${GIN_MODE:-debug}
     depends_on:
       db:
         condition: service_healthy
