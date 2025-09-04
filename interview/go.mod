@@ -10,6 +10,7 @@ require (
 	github.com/gin-gonic/gin v1.10.1
 	github.com/golang-migrate/migrate/v4 v4.18.3
 	github.com/google/uuid v1.6.0
+	github.com/guylaor/goword v0.0.0-20171127195350-66a9aa7fe479
 	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.10.9
 	gorm.io/datatypes v1.2.6

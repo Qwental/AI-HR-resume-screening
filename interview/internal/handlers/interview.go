@@ -88,17 +88,3 @@ func (h *Handler) FinishByToken(c *gin.Context) {
 }
 
 /* -------- Роутер -------- */
-
-func SetupRouter(s service.InterviewService) *gin.Engine {
-	r := gin.Default()
-	h := NewHandler(s)
-
-	api := r.Group("/api")
-	{
-		api.POST("/admin/interviews", h.Create)
-		api.GET("/interview/:token", h.GetByToken)
-		api.POST("/interview/:token/start", h.StartByToken)
-		api.POST("/interview/:token/finish", h.FinishByToken)
-	}
-	return r
-}

@@ -9,6 +9,6 @@ import (
 )
 
 func NewDB() (*gorm.DB, error) {
-	dsn := os.Getenv("POSTGRES_DSN")
+	dsn := os.Getenv("DATABASE_URL")
 	return gorm.Open(postgres.Open(dsn), &gorm.Config{})
 }

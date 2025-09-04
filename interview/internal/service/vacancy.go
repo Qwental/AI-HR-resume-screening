@@ -19,9 +19,7 @@ type VacancyService interface {
 	CreateVacancy(ctx context.Context, vacancy *models.Vacancy, file io.Reader, filename string) error
 	GetVacancy(ctx context.Context, id string) (*models.Vacancy, error)
 	GetVacancyWithFileURL(ctx context.Context, id string) (*models.Vacancy, error)
-
-	GetAllVacancies(ctx context.Context) ([]*models.Vacancy, error) // без StorageKey
-
+	GetAllVacancies(ctx context.Context) ([]*models.Vacancy, error)
 	UpdateVacancy(ctx context.Context, vacancy *models.Vacancy) error
 	UpdateVacancyWithFile(ctx context.Context, vacancy *models.Vacancy, file io.Reader, filename string) error
 	DeleteVacancy(ctx context.Context, id string) error
@@ -29,17 +27,17 @@ type VacancyService interface {
 
 type vacancyService struct {
 	repo    repository.VacancyRepository
-	storage storage.S3Storage
+	storage *storage.S3Storage
 }
 
 func NewVacancyService(repo repository.VacancyRepository, storage *storage.S3Storage) VacancyService {
-	return &vacancyService{repo: repo, storage: *storage}
+	return &vacancyService{repo: repo, storage: storage}
 }
 
 func (s *vacancyService) validateWeights(vacancy *models.Vacancy) error {
 	total := vacancy.WeightSoft + vacancy.WeightHard + vacancy.WeightCase
 	if total != 100 {
-		return fmt.Errorf("сумма весов должна равняться 100, получено: %d", total)
+		return fmt.Errorf("weights sum must equal 100, got: %d", total)
 	}
 	return nil
 }
@@ -53,7 +51,7 @@ func (s *vacancyService) validateFileType(filename string) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("неподдерживаемый тип файла: %s", ext)
+	return fmt.Errorf("unsupported file type: %s", ext)
 }
 
 func (s *vacancyService) CreateVacancy(ctx context.Context, vacancy *models.Vacancy, file io.Reader, filename string) error {
@@ -62,7 +60,7 @@ func (s *vacancyService) CreateVacancy(ctx context.Context, vacancy *models.Vaca
 	}
 
 	if file == nil {
-		return fmt.Errorf("файл обязателен для создания вакансии")
+		return fmt.Errorf("file is required to create vacancy")
 	}
 
 	if err := s.validateFileType(filename); err != nil {
@@ -73,7 +71,7 @@ func (s *vacancyService) CreateVacancy(ctx context.Context, vacancy *models.Vaca
 
 	storageKey, err := s.storage.UploadVacancyFile(ctx, limitedReader, filename)
 	if err != nil {
-		return fmt.Errorf("ошибка загрузки файла: %w", err)
+		return fmt.Errorf("file upload error: %w", err)
 	}
 
 	vacancy.StorageKey = storageKey
@@ -81,14 +79,19 @@ func (s *vacancyService) CreateVacancy(ctx context.Context, vacancy *models.Vaca
 
 	if err := s.repo.Create(ctx, vacancy); err != nil {
 		s.storage.DeleteFile(ctx, storageKey)
-		return fmt.Errorf("ошибка создания вакансии: %w", err)
+		return fmt.Errorf("failed to create vacancy: %w", err)
 	}
 
 	return nil
 }
 
 func (s *vacancyService) GetVacancy(ctx context.Context, id string) (*models.Vacancy, error) {
-	return s.repo.GetByID(ctx, id)
+	vacancy, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	return vacancy, nil
 }
 
 func (s *vacancyService) GetVacancyWithFileURL(ctx context.Context, id string) (*models.Vacancy, error) {
@@ -100,7 +103,7 @@ func (s *vacancyService) GetVacancyWithFileURL(ctx context.Context, id string) (
 	if vacancy.StorageKey != "" {
 		url, err := s.storage.GeneratePresignedURL(ctx, vacancy.StorageKey, time.Hour)
 		if err == nil {
-			vacancy.StorageKey = url
+			vacancy.FileURL = url
 		}
 	}
 
@@ -113,17 +116,13 @@ func (s *vacancyService) GetAllVacancies(ctx context.Context) ([]*models.Vacancy
 		return nil, err
 	}
 
-	for _, vacancy := range vacancies {
-		vacancy.StorageKey = ""
-	}
-
 	return vacancies, nil
 }
 
 func (s *vacancyService) UpdateVacancy(ctx context.Context, vacancy *models.Vacancy) error {
 	existing, err := s.repo.GetByID(ctx, vacancy.ID)
 	if err != nil {
-		return fmt.Errorf("вакансия не найдена: %w", err)
+		return fmt.Errorf("vacancy not found: %w", err)
 	}
 
 	if err := s.validateWeights(vacancy); err != nil {
@@ -141,7 +140,7 @@ func (s *vacancyService) UpdateVacancy(ctx context.Context, vacancy *models.Vaca
 func (s *vacancyService) UpdateVacancyWithFile(ctx context.Context, vacancy *models.Vacancy, file io.Reader, filename string) error {
 	existing, err := s.repo.GetByID(ctx, vacancy.ID)
 	if err != nil {
-		return fmt.Errorf("вакансия не найдена: %w", err)
+		return fmt.Errorf("vacancy not found: %w", err)
 	}
 
 	if err := s.validateWeights(vacancy); err != nil {
@@ -156,7 +155,7 @@ func (s *vacancyService) UpdateVacancyWithFile(ctx context.Context, vacancy *mod
 
 	storageKey, err := s.storage.UploadVacancyFile(ctx, limitedReader, filename)
 	if err != nil {
-		return fmt.Errorf("ошибка загрузки файла: %w", err)
+		return fmt.Errorf("file upload error: %w", err)
 	}
 
 	oldStorageKey := existing.StorageKey
@@ -167,13 +166,15 @@ func (s *vacancyService) UpdateVacancyWithFile(ctx context.Context, vacancy *mod
 
 	if err := s.repo.Update(ctx, vacancy); err != nil {
 		s.storage.DeleteFile(ctx, storageKey)
-		return err
+		return fmt.Errorf("failed to update vacancy: %w", err)
 	}
 
 	if oldStorageKey != "" {
 		go func() {
 			ctx := context.Background()
-			_ = s.storage.DeleteFile(ctx, oldStorageKey)
+			if err := s.storage.DeleteFile(ctx, oldStorageKey); err != nil {
+				fmt.Printf("Warning: failed to delete old file %s: %v\n", oldStorageKey, err)
+			}
 		}()
 	}
 
@@ -183,17 +184,19 @@ func (s *vacancyService) UpdateVacancyWithFile(ctx context.Context, vacancy *mod
 func (s *vacancyService) DeleteVacancy(ctx context.Context, id string) error {
 	existing, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		return fmt.Errorf("вакансия не найдена: %w", err)
+		return fmt.Errorf("vacancy not found: %w", err)
 	}
 
 	if err := s.repo.Delete(ctx, id); err != nil {
-		return err
+		return fmt.Errorf("failed to delete vacancy: %w", err)
 	}
 
 	if existing.StorageKey != "" {
 		go func() {
 			ctx := context.Background()
-			_ = s.storage.DeleteFile(ctx, existing.StorageKey)
+			if err := s.storage.DeleteFile(ctx, existing.StorageKey); err != nil {
+				fmt.Printf("Warning: failed to delete file %s: %v\n", existing.StorageKey, err)
+			}
 		}()
 	}
 

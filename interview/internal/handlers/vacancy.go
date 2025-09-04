@@ -19,37 +19,32 @@ func NewVacancyHandler(svc service.VacancyService) *VacancyHandler {
 
 // POST /api/vacancies
 func (h *VacancyHandler) Create(c *gin.Context) {
-	// Получаем данные из multipart form
 	title := c.PostForm("title")
 	description := c.PostForm("description")
 	usersID := c.PostForm("users_id")
 
-	// Веса с дефолтными значениями
 	weightSoft, _ := strconv.Atoi(c.DefaultPostForm("weight_soft", "33"))
 	weightHard, _ := strconv.Atoi(c.DefaultPostForm("weight_hard", "33"))
 	weightCase, _ := strconv.Atoi(c.DefaultPostForm("weight_case", "34"))
 
-	// Валидация обязательных полей
 	if title == "" || usersID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "title и users_id обязательны"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "title and users_id are required"})
 		return
 	}
 
-	// Получаем файл
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "файл обязателен"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "file is required"})
 		return
 	}
 
 	file, err := fileHeader.Open()
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "не удалось открыть файл"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to open file"})
 		return
 	}
 	defer file.Close()
 
-	// Создаем модель вакансии
 	vacancy := &models.Vacancy{
 		Title:       title,
 		Description: &description,
@@ -59,23 +54,26 @@ func (h *VacancyHandler) Create(c *gin.Context) {
 		WeightCase:  weightCase,
 	}
 
-	// Создаем вакансию через cервис
 	err = h.svc.CreateVacancy(c.Request.Context(), vacancy, file, fileHeader.Filename)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
-		"id":          vacancy.ID,
-		"title":       vacancy.Title,
-		"description": vacancy.Description,
-		"users_id":    vacancy.UsersID,
-		"storage_key": vacancy.StorageKey,
-		"weight_soft": vacancy.WeightSoft,
-		"weight_hard": vacancy.WeightHard,
-		"weight_case": vacancy.WeightCase,
-		"created_at":  vacancy.CreatedAt,
+	c.JSON(http.StatusCreated, vacancy)
+}
+
+// GET /api/vacancies - get all vacancies
+func (h *VacancyHandler) GetAll(c *gin.Context) {
+	vacancies, err := h.svc.GetAllVacancies(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get vacancies"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"count":     len(vacancies),
+		"vacancies": vacancies,
 	})
 }
 
@@ -85,27 +83,35 @@ func (h *VacancyHandler) GetByID(c *gin.Context) {
 
 	vacancy, err := h.svc.GetVacancy(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "вакансия не найдена"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "vacancy not found"})
 		return
 	}
 
 	c.JSON(http.StatusOK, vacancy)
 }
 
-// GET /api/vacancies/:id/file - получение вакансии с presigned URL для скачивания файла
-func (h *VacancyHandler) GetWithFileURL(c *gin.Context) {
+// GET /api/vacancies/:id/download - get file download link
+func (h *VacancyHandler) GetDownloadLink(c *gin.Context) {
 	id := c.Param("id")
 
 	vacancy, err := h.svc.GetVacancyWithFileURL(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "вакансия не найдена"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "vacancy not found"})
 		return
 	}
 
-	c.JSON(http.StatusOK, vacancy)
+	if vacancy.FileURL == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "file not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"download_url": vacancy.FileURL,
+		"expires_in":   3600, // 1 hour in seconds
+	})
 }
 
-// PUT /api/vacancies/:id - обновление без файла
+// PUT /api/vacancies/:id - update without file
 func (h *VacancyHandler) Update(c *gin.Context) {
 	id := c.Param("id")
 
@@ -118,7 +124,7 @@ func (h *VacancyHandler) Update(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "неверный запрос: " + err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request: " + err.Error()})
 		return
 	}
 
@@ -137,7 +143,54 @@ func (h *VacancyHandler) Update(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "вакансия обновлена"})
+	c.JSON(http.StatusOK, gin.H{"message": "vacancy updated successfully"})
+}
+
+// PUT /api/vacancies/:id/file - update with new file
+func (h *VacancyHandler) UpdateWithFile(c *gin.Context) {
+	id := c.Param("id")
+
+	title := c.PostForm("title")
+	description := c.PostForm("description")
+
+	weightSoft, _ := strconv.Atoi(c.DefaultPostForm("weight_soft", "33"))
+	weightHard, _ := strconv.Atoi(c.DefaultPostForm("weight_hard", "33"))
+	weightCase, _ := strconv.Atoi(c.DefaultPostForm("weight_case", "34"))
+
+	if title == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "title is required"})
+		return
+	}
+
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "file is required"})
+		return
+	}
+
+	file, err := fileHeader.Open()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to open file"})
+		return
+	}
+	defer file.Close()
+
+	vacancy := &models.Vacancy{
+		ID:          id,
+		Title:       title,
+		Description: &description,
+		WeightSoft:  weightSoft,
+		WeightHard:  weightHard,
+		WeightCase:  weightCase,
+	}
+
+	err = h.svc.UpdateVacancyWithFile(c.Request.Context(), vacancy, file, fileHeader.Filename)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "vacancy and file updated successfully"})
 }
 
 // DELETE /api/vacancies/:id
@@ -150,5 +203,5 @@ func (h *VacancyHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "вакансия удалена"})
+	c.JSON(http.StatusOK, gin.H{"message": "vacancy deleted successfully"})
 }
