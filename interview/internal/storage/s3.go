@@ -84,6 +84,22 @@ func (s *S3Storage) getContentTypeByExtension(filename string) string {
 	return "application/octet-stream"
 }
 
+func (s *S3Storage) DownloadFile(ctx context.Context, key string) (io.ReadCloser, error) {
+	if key == "" {
+		return nil, fmt.Errorf("storage key cannot be empty")
+	}
+
+	result, err := s.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(s.bucketName),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to download file from S3: %w", err)
+	}
+
+	return result.Body, nil
+}
+
 // Определение Content-Type по содержимому файла
 func (s *S3Storage) detectContentType(filename string, file io.Reader) (string, io.Reader, error) {
 	// Сначала пробуем определить по расширению
