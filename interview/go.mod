@@ -13,6 +13,7 @@ require (
 	github.com/guylaor/goword v0.0.0-20171127195350-66a9aa7fe479
 	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.10.9
+	github.com/streadway/amqp v1.1.0
 	gorm.io/datatypes v1.2.6
 	gorm.io/driver/postgres v1.5.0
 	gorm.io/gorm v1.30.0

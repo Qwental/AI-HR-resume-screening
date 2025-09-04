@@ -13,8 +13,8 @@ type User struct {
 	PasswordHash string    `json:"-" gorm:"column:password_hash;type:varchar(255);not null"`                                                           // изменено на password_hash
 	Role         string    `json:"role" gorm:"type:varchar(255);not null;check:role IN ('hr_specialist','candidate','admin');default:'hr_specialist'"` // обновленные роли
 	IsActive     bool      `json:"is_active" gorm:"default:true"`
-	CreatedAt    time.Time `json:"created_at" gorm:"type:timestamptz;not null;default:CURRENT_TIMESTAMP"`
-	UpdatedAt    time.Time `json:"updated_at" gorm:"type:timestamptz;not null;default:CURRENT_TIMESTAMP"`
+	CreatedAt    time.Time `json:"created_at" gorm:"autoCreateTime" db:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at" gorm:"autoUpdateTime" db:"updated_at"`
 }
 
 func (User) TableName() string {

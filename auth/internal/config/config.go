@@ -5,8 +5,6 @@ import (
 	"os"
 	"strconv"
 	"time"
-
-	"github.com/joho/godotenv"
 )
 
 type Config struct {
@@ -36,8 +34,8 @@ type JWTConfig struct {
 }
 
 func Load() *Config {
-	// Загружаем .env файл (игнорируем ошибку если файла нет)
-	_ = godotenv.Load()
+	// В Docker полагаемся на переменные окружения, установленные контейнером
+	// godotenv.Load() не нужен, так как Docker уже устанавливает переменные
 
 	return &Config{
 		Server: ServerConfig{
@@ -47,18 +45,43 @@ func Load() *Config {
 		Database: DatabaseConfig{
 			Host:     getEnv("DB_HOST", "localhost"),
 			Port:     getEnv("DB_PORT", "5432"),
-			User:     getEnv("DB_USER", "postgres"),
-			Password: getEnvRequired("DB_PASSWORD"), // Обязательная переменная
-			DBName:   getEnv("DB_NAME", "ai_hr_service_db"),
+			User:     getEnv("DB_USER", "ai_hr_user"),
+			Password: getEnvRequired("DB_PASSWORD"),
+			DBName:   getEnv("DB_NAME", "ai_hr_db"), // Исправлено имя БД
 			SSLMode:  getEnv("DB_SSLMODE", "disable"),
 		},
 		JWT: JWTConfig{
-			Secret:          getEnvRequired("JWT_SECRET"),    // Обязательная переменная
-			AccessTokenTTL:  getEnv("JWT_ACCESS_TTL", "30m"), // 30 минут
-			RefreshTokenTTL: getEnv("JWT_REFRESH_TTL", "7d"), // 7 дней
+			Secret:          getEnvRequired("JWT_SECRET"),
+			AccessTokenTTL:  getEnv("JWT_ACCESS_TTL", "30m"),
+			RefreshTokenTTL: getEnv("JWT_REFRESH_TTL", "7d"),
 		},
 	}
 }
+
+//func Load() *Config {
+//	// Загружаем .env файл (игнорируем ошибку если файла нет)
+//	//_ = godotenv.Load("../../.env")
+//
+//	return &Config{
+//		Server: ServerConfig{
+//			Port: getEnv("PORT", "8080"),
+//			Mode: getEnv("GIN_MODE", "debug"),
+//		},
+//		Database: DatabaseConfig{
+//			Host:     getEnv("DB_HOST", "localhost"),
+//			Port:     getEnv("DB_PORT", "5432"),
+//			User:     getEnv("DB_USER", "postgres"),
+//			Password: getEnvRequired("DB_PASSWORD"), // Обязательная переменная
+//			DBName:   getEnv("DB_NAME", "ai_hr_service_db"),
+//			SSLMode:  getEnv("DB_SSLMODE", "disable"),
+//		},
+//		JWT: JWTConfig{
+//			Secret:          getEnvRequired("JWT_SECRET"),    // Обязательная переменная
+//			AccessTokenTTL:  getEnv("JWT_ACCESS_TTL", "30m"), // 30 минут
+//			RefreshTokenTTL: getEnv("JWT_REFRESH_TTL", "7d"), // 7 дней
+//		},
+//	}
+//}
 
 // Вспомогательные функции
 func getEnv(key, defaultValue string) string {
