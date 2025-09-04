@@ -1,11 +1,14 @@
 package service
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	"github.com/guylaor/goword"
-	"log"
+	"io"
+	"os"
 	"strings"
+
+	"github.com/guylaor/goword"
+	"interview/internal/storage"
 )
 
 type Job struct {
@@ -34,10 +37,28 @@ type Job struct {
 	ДопИнформация    string `json:"additional_info"`
 }
 
-func extraction_vacancy() {
-	text, err := goword.ParseText("1.docx")
+func ExtractVacancyFromS3Key(ctx context.Context, storage *storage.S3Storage, storageKey string) (*Job, error) {
+	reader, err := storage.DownloadFile(ctx, storageKey)
 	if err != nil {
-		log.Panic(err)
+		return nil, fmt.Errorf("failed to download file from S3: %w", err)
+	}
+	defer reader.Close()
+
+	tempFile, err := os.CreateTemp("", "extraction_*.docx")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer os.Remove(tempFile.Name())
+	defer tempFile.Close()
+
+	_, err = io.Copy(tempFile, reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to copy file: %w", err)
+	}
+
+	text, err := goword.ParseText(tempFile.Name())
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse docx file: %w", err)
 	}
 
 	lines := strings.Split(text, "\n")
@@ -45,7 +66,8 @@ func extraction_vacancy() {
 		lines[i] = strings.TrimSpace(lines[i])
 	}
 
-	job := Job{}
+	job := &Job{}
+
 	keyMap := map[string]*string{
 		"Статус":                       &job.Статус,
 		"Название":                     &job.Название,
@@ -76,8 +98,11 @@ func extraction_vacancy() {
 	var buffer []string
 
 	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+
 		if ptr, ok := keyMap[line]; ok {
-			// сохранили предыдущий ключ
 			if currentKey != nil {
 				*currentKey = strings.Join(buffer, " ")
 			}
@@ -88,15 +113,30 @@ func extraction_vacancy() {
 		}
 	}
 
-	// сохранить последнее поле
 	if currentKey != nil {
 		*currentKey = strings.Join(buffer, " ")
 	}
 
-	jsonData, err := json.MarshalIndent(job, "", "  ")
+	return job, nil
+}
+
+func extractResumeFromDocx(file io.Reader) (string, error) {
+	tempFile, err := os.CreateTemp("", "extract_*.docx")
 	if err != nil {
-		log.Fatal(err)
+		return "", fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer os.Remove(tempFile.Name())
+	defer tempFile.Close()
+
+	_, err = io.Copy(tempFile, file)
+	if err != nil {
+		return "", fmt.Errorf("failed to copy file: %w", err)
 	}
 
-	fmt.Println(string(jsonData))
+	text, err := goword.ParseText(tempFile.Name())
+	if err != nil {
+		return "", fmt.Errorf("failed to parse docx: %w", err)
+	}
+
+	return strings.TrimSpace(text), nil
 }

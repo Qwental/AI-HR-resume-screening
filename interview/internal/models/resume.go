@@ -19,6 +19,5 @@ type Resume struct {
 
 	Mail string `json:"mail"`
 
-	Text   datatypes.JSON `gorm:"type:jsonb;column:text_jsonb" json:"text_jsonb,omitempty"`
 	Result datatypes.JSON `gorm:"type:jsonb;column:result_jsonb" json:"result_jsonb,omitempty"`
 }

@@ -67,7 +67,7 @@ func main() {
 	// Создаем services
 	log.Println("Initializing services...")
 	vacancySvc := service.NewVacancyService(vacancyRepo, s3Storage)
-	resumeSvc := service.NewResumeService(resumeRepo, s3Storage)
+	resumeSvc := service.NewResumeService(resumeRepo, s3Storage, vacancyRepo)
 	interviewSvc := service.NewInterviewService(interviewRepo)
 	log.Println("Services initialized")
 
