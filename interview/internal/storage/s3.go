@@ -5,8 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"io"
+	"log"
 	"mime"
 	"net/http"
 	"path/filepath"
@@ -17,7 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	_ "github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/google/uuid"
 )
 
@@ -27,37 +27,88 @@ type S3Storage struct {
 	region     string
 }
 
+// ✅ НОВАЯ ВЕРСИЯ - Исправленная инициализация S3 клиента
 func NewS3Client(endpoint, region, accessKey, secretKey string) *s3.Client {
-	customResolver := aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {
-		return aws.Endpoint{
-			URL:           endpoint,
-			SigningRegion: region,
-			Source:        aws.EndpointSourceCustom,
-		}, nil
-	})
+	// Кастомный resolver для MinIO endpoint
+	customResolver := aws.EndpointResolverWithOptionsFunc(
+		func(service, region string, options ...interface{}) (aws.Endpoint, error) {
+			if service == s3.ServiceID {
+				return aws.Endpoint{
+					URL:           endpoint,
+					SigningRegion: region,
+				}, nil
+			}
+			return aws.Endpoint{}, fmt.Errorf("unknown endpoint requested")
+		})
 
+	// Загружаем конфигурацию AWS
 	cfg, err := config.LoadDefaultConfig(context.TODO(),
-		config.WithRegion(region),
 		config.WithEndpointResolverWithOptions(customResolver),
-		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey, "")),
+		config.WithRegion(region),
+		config.WithCredentialsProvider(
+			credentials.NewStaticCredentialsProvider(accessKey, secretKey, ""),
+		),
 	)
 	if err != nil {
-		panic(fmt.Errorf("failed to load AWS config: %w", err))
+		panic(fmt.Sprintf("failed to load S3 config: %v", err))
 	}
 
-	return s3.NewFromConfig(cfg, func(o *s3.Options) {
+	// Создаем S3 клиент с PathStyle для MinIO
+	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
 		o.UsePathStyle = true
 	})
+
+	return client
 }
 
+// ✅ НОВАЯ ВЕРСИЯ - с автоматическим созданием bucket
 func NewS3Storage(client *s3.Client, bucketName string, region string) *S3Storage {
-	return &S3Storage{client: client, bucketName: bucketName, region: region}
+	storage := &S3Storage{
+		client:     client,
+		bucketName: bucketName,
+		region:     region,
+	}
+
+	// 🚀 Автоматически создаем bucket при инициализации
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := storage.CreateBucketIfNotExists(ctx); err != nil {
+		log.Printf("⚠️ Warning: Could not create bucket %s: %v", bucketName, err)
+		log.Printf("📁 Bucket will be created on first upload")
+	}
+
+	return storage
+}
+
+// ✅ НОВЫЙ МЕТОД - Автоматическое создание bucket
+func (s *S3Storage) CreateBucketIfNotExists(ctx context.Context) error {
+	// Проверяем, существует ли bucket
+	_, err := s.client.HeadBucket(ctx, &s3.HeadBucketInput{
+		Bucket: aws.String(s.bucketName),
+	})
+	if err == nil {
+		log.Printf("✅ Bucket '%s' already exists", s.bucketName)
+		return nil // bucket уже существует
+	}
+
+	// Создаем bucket
+	log.Printf("🛠️ Creating bucket '%s'...", s.bucketName)
+	_, err = s.client.CreateBucket(ctx, &s3.CreateBucketInput{
+		Bucket: aws.String(s.bucketName),
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to create bucket: %w", err)
+	}
+
+	log.Printf("✅ Bucket '%s' created successfully", s.bucketName)
+	return nil
 }
 
 // Определение Content-Type по расширению файла с fallback значениями
 func (s *S3Storage) getContentTypeByExtension(filename string) string {
 	ext := strings.ToLower(filepath.Ext(filename))
-
 	contentTypeMap := map[string]string{
 		".pdf":  "application/pdf",
 		".doc":  "application/msword",
@@ -148,7 +199,6 @@ func (s *S3Storage) UploadFile(ctx context.Context, file io.Reader, filename, fo
 		Body:        processedFile,
 		ContentType: aws.String(contentType),
 	})
-
 	if err != nil {
 		return "", fmt.Errorf("failed to upload file to S3: %w", err)
 	}
@@ -166,14 +216,18 @@ func (s *S3Storage) UploadVacancyFile(ctx context.Context, file io.Reader, filen
 	return s.UploadFile(ctx, file, filename, "vacancies")
 }
 
-// Ссылка
+// ✅ ИСПРАВЛЕННЫЙ МЕТОД - для совместимости
+func (s *S3Storage) UploadVacancy(ctx context.Context, file io.Reader, filename string) (string, error) {
+	return s.UploadVacancyFile(ctx, file, filename)
+}
+
+// Генерация presigned URL
 func (s *S3Storage) GeneratePresignedURL(ctx context.Context, key string, expiration time.Duration) (string, error) {
 	if key == "" {
 		return "", fmt.Errorf("key cannot be empty")
 	}
 
 	presignClient := s3.NewPresignClient(s.client)
-
 	request, err := presignClient.PresignGetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(s.bucketName),
 		Key:    aws.String(key),
@@ -198,7 +252,6 @@ func (s *S3Storage) DeleteFile(ctx context.Context, key string) error {
 		Bucket: aws.String(s.bucketName),
 		Key:    aws.String(key),
 	})
-
 	if err != nil {
 		return fmt.Errorf("failed to delete file from S3: %w", err)
 	}
@@ -227,3 +280,39 @@ func (s *S3Storage) FileExists(ctx context.Context, key string) (bool, error) {
 
 	return true, nil
 }
+
+// ✅ ДОПОЛНИТЕЛЬНЫЙ МЕТОД - для совместимости с существующим кодом
+func (s *S3Storage) GetFile(ctx context.Context, key string) (io.ReadCloser, error) {
+	return s.DownloadFile(ctx, key)
+}
+
+/*
+// ❌ СТАРАЯ ВЕРСИЯ - ЗАКОММЕНТИРОВАННАЯ
+func NewS3Client(endpoint, region, accessKey, secretKey string) *s3.Client {
+	customResolver := aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {
+		return aws.Endpoint{
+			URL:           endpoint,
+			SigningRegion: region,
+			Source:        aws.EndpointSourceCustom,
+		}, nil
+	})
+
+	cfg, err := config.LoadDefaultConfig(context.TODO(),
+		config.WithRegion(region),
+		config.WithEndpointResolverWithOptions(customResolver),
+		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey, "")),
+	)
+
+	if err != nil {
+		panic(fmt.Errorf("failed to load AWS config: %w", err))
+	}
+
+	return s3.NewFromConfig(cfg, func(o *s3.Options) {
+		o.UsePathStyle = true
+	})
+}
+
+func NewS3Storage(client *s3.Client, bucketName string, region string) *S3Storage {
+	return &S3Storage{client: client, bucketName: bucketName, region: region}
+}
+*/

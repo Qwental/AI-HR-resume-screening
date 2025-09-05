@@ -2,7 +2,13 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"interview/internal/broker"
+	"interview/internal/config"
+	"interview/internal/db"
+	"interview/internal/handlers"
+	"interview/internal/repository"
+	"interview/internal/service"
+	"interview/internal/storage"
 	"log"
 	"net/http"
 	"os"
@@ -11,51 +17,51 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv"
-
-	"interview/internal/db"
-	"interview/internal/handlers"
-	"interview/internal/repository"
-	"interview/internal/service"
-	"interview/internal/storage"
 )
 
 func main() {
-	// Загружаем .env файл
-	if err := godotenv.Load(); err != nil {
-		log.Println("Warning: .env file not found, using system environment variables")
-	}
+	log.Println("Starting Interview Service...")
 
-	log.Println("Starting application...")
-
-	// Запускаем миграции
-	log.Println("Running database migrations...")
-	db.RunMigrations()
-	log.Println("Migrations completed")
+	// Загружаем конфиг
+	cfg := config.Load()
 
 	// Подключаемся к БД
 	log.Println("Connecting to database...")
-	database, err := db.NewDB()
-	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
-	}
+	database := db.Connect(cfg.Database)
 	log.Println("Database connected successfully")
 
 	// Инициализируем S3 storage
 	log.Println("Initializing S3 storage...")
 	s3Client := storage.NewS3Client(
-		getEnv("S3_ENDPOINT", ""),
-		getEnv("S3_REGION", "ru-1"),
-		getEnv("S3_ACCESS_KEY", ""),
-		getEnv("S3_SECRET_KEY", ""),
+		getEnv("S3_ENDPOINT", "http://localhost:9000"),
+		getEnv("S3_REGION", "us-east-1"),
+		getEnv("S3_ACCESS_KEY", "minioadmin"),
+		getEnv("S3_SECRET_KEY", "minioadmin123"),
 	)
 
 	s3Storage := storage.NewS3Storage(
 		s3Client,
 		getEnv("S3_BUCKET", "interview-files"),
-		getEnv("S3_REGION", "ru-1"),
+		getEnv("S3_REGION", "us-east-1"),
 	)
 	log.Println("S3 storage initialized")
+
+	// 🚀 Инициализируем RabbitMQ Publisher
+	log.Println("Initializing RabbitMQ publisher...")
+	var publisher broker.Publisher // ← ИСПРАВЛЕНО: интерфейс
+
+	if rabbitmqPublisher, err := broker.NewRabbitMQPublisher(
+		getEnv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/"),
+		getEnv("RABBITMQ_EXCHANGE", "resume_exchange"),
+		getEnv("RABBITMQ_QUEUE", "resume_analysis_queue"),
+	); err != nil {
+		log.Printf("Failed to create RabbitMQ publisher: %v", err)
+		log.Println("Using NullPublisher as fallback...")
+		publisher = broker.NewNullPublisher()
+	} else {
+		log.Println("RabbitMQ publisher initialized")
+		publisher = rabbitmqPublisher
+	}
 
 	// Создаем repositories
 	log.Println("Initializing repositories...")
@@ -64,10 +70,10 @@ func main() {
 	interviewRepo := repository.NewInterviewRepository(database)
 	log.Println("Repositories initialized")
 
-	// Создаем services
+	// Создаем services с publisher
 	log.Println("Initializing services...")
 	vacancySvc := service.NewVacancyService(vacancyRepo, s3Storage)
-	resumeSvc := service.NewResumeService(resumeRepo, s3Storage, vacancyRepo)
+	resumeSvc := service.NewResumeService(resumeRepo, s3Storage, vacancyRepo, publisher)
 	interviewSvc := service.NewInterviewService(interviewRepo)
 	log.Println("Services initialized")
 
@@ -82,7 +88,7 @@ func main() {
 	log.Println("Routes configured")
 
 	// Настраиваем сервер
-	port := getEnv("PORT", "8080")
+	port := getEnv("PORT", "8081")
 	server := &http.Server{
 		Addr:           ":" + port,
 		Handler:        router,
@@ -98,8 +104,11 @@ func main() {
 
 	// Запускаем сервер в отдельной горутине
 	go func() {
-		log.Printf("Server starting on port %s", port)
-		log.Printf("Environment: %s", getEnv("GIN_MODE", "debug"))
+		log.Printf("🚀 Interview Service starting on port %s", port)
+		log.Printf("📊 Environment: %s", getEnv("GIN_MODE", "debug"))
+		log.Printf("🗃️ Database: %s:%s/%s", cfg.Database.Host, cfg.Database.Port, cfg.Database.DBName)
+		log.Printf("📁 S3 Endpoint: %s", getEnv("S3_ENDPOINT", "http://localhost:9000"))
+		log.Printf("🐰 RabbitMQ: %s", getEnv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/"))
 
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server failed to start: %v", err)
@@ -114,6 +123,12 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	// Закрываем publisher
+	log.Println("Closing RabbitMQ publisher...")
+	publisher.Close()
+	log.Println("RabbitMQ publisher closed")
+
+	// Останавливаем HTTP сервер
 	if err := server.Shutdown(ctx); err != nil {
 		log.Fatalf("Server forced to shutdown: %v", err)
 	}
@@ -121,28 +136,9 @@ func main() {
 	log.Println("Server stopped gracefully")
 }
 
-// getEnv возвращает значение переменной окружения или дефолтное значение
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
 	}
 	return defaultValue
-}
-
-// validateEnv проверяет обязательные переменные окружения
-func validateRequiredEnvVars() error {
-	required := []string{
-		"DATABASE_URL",
-		"S3_ACCESS_KEY",
-		"S3_SECRET_KEY",
-		"S3_BUCKET",
-	}
-
-	for _, env := range required {
-		if os.Getenv(env) == "" {
-			return fmt.Errorf("required environment variable %s is not set", env)
-		}
-	}
-
-	return nil
 }

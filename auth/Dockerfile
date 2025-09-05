@@ -1,16 +1,16 @@
-# Dockerfile для Go приложения
-FROM golang:1.23-alpine AS builder
+# Multi-stage build для auth service
+FROM golang:1.24-alpine AS builder
 
 # Устанавливаем git для загрузки зависимостей
 RUN apk add --no-cache git
 
 WORKDIR /app
 
-# Копируем go mod файлы
+# Копируем go mod файлы и загружаем зависимости
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Копируем весь код (исправляем путь)
+# Копируем весь код
 COPY . .
 
 # Собираем приложение
@@ -24,7 +24,7 @@ RUN apk --no-cache add ca-certificates
 
 WORKDIR /root/
 
-# Копируем бинарник
+# Копируем бинарник из builder stage
 COPY --from=builder /app/main .
 
 # Копируем статические файлы

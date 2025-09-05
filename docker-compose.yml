@@ -1,5 +1,3 @@
-# ~/GolandProjects/AI_HR/docker-compose.yml
-
 services:
   db:
     image: postgres:15
@@ -40,12 +38,53 @@ services:
       - JWT_ACCESS_TTL=${JWT_ACCESS_TTL}
       - JWT_REFRESH_TTL=${JWT_REFRESH_TTL}
       - GIN_MODE=${GIN_MODE}
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
     depends_on:
       db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     networks:
       - ai_hr_net
     restart: unless-stopped
+
+  interview:
+    build:
+      context: ./interview
+      dockerfile: Dockerfile
+    container_name: ai-hr-interview
+    ports:
+      - "8081:8081"
+    environment:
+      - PORT=8081
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - DB_SSLMODE=disable
+      - GIN_MODE=${GIN_MODE}
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - AUTH_SERVICE_URL=http://auth:8080
+      # S3/MinIO настройки
+      - S3_ENDPOINT=http://minio:9000
+      - S3_REGION=us-east-1
+      - S3_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - S3_SECRET_KEY=${MINIO_SECRET_KEY}
+      - S3_BUCKET=${MINIO_BUCKET}
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - ai_hr_net
+    restart: unless-stopped
+
   rabbitmq:
     image: rabbitmq:3.12-management
     container_name: ai-hr-rabbitmq
@@ -63,11 +102,58 @@ services:
       interval: 30s
       timeout: 30s
       retries: 3
+    networks:
+      - ai_hr_net
+
+  # MinIO - S3-совместимое хранилище
+  minio:
+    image: minio/minio:latest
+    container_name: ai-hr-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}      # ← Обновленное
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}  # ← Обновленное
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - ai_hr_net
+
+
+# Создание бакета в MinIO (альтернатива)
+#  minio-bucket:
+#    image: minio/mc:latest
+#    container_name: ai-hr-minio-setup
+#    depends_on:
+#      minio:
+#        condition: service_healthy
+#    entrypoint: >
+#      /bin/sh -c "
+#      echo 'Setting up MinIO alias...' &&
+#      /usr/bin/mc alias set myminio http://minio:9000 ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY} &&
+#      echo 'Creating bucket if not exists...' &&
+#      /usr/bin/mc mb myminio/${MINIO_BUCKET} --ignore-existing || echo 'Bucket already exists' &&
+#      echo 'Setting download policy (optional)...' &&
+#      /usr/bin/mc anonymous set download myminio/${MINIO_BUCKET} || echo 'Policy not set - using private bucket' &&
+#      echo '✅ MinIO setup completed!' &&
+#      sleep 2
+#      "
+#    networks:
+#      - ai_hr_net
+#    restart: "no"
+
 
 volumes:
   db_data:
   rabbitmq_data:
-
+  minio_data:
 
 networks:
   ai_hr_net:

@@ -1,5 +1,5 @@
 # Dockerfile для Interview Service
-FROM golang:1.23-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 # Устанавливаем git для загрузки зависимостей
 RUN apk add --no-cache git
@@ -26,6 +26,8 @@ WORKDIR /root/
 
 # Копируем бинарник
 COPY --from=builder /app/main .
+
+# Копируем миграции
 
 # Открываем порт
 EXPOSE 8081
