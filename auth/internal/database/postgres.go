@@ -2,7 +2,7 @@ package database
 
 import (
 	"ai-hr-service/internal/config"
-	_ "ai-hr-service/internal/models"
+	"ai-hr-service/internal/models"
 	"fmt"
 	"log"
 	"time"
@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
+/*
 func Connect(cfg config.DatabaseConfig) *gorm.DB {
 	// Ждем, пока PostgreSQL будет готов
 	log.Println("Waiting for PostgreSQL to be ready...")
@@ -38,6 +39,36 @@ func Connect(cfg config.DatabaseConfig) *gorm.DB {
 	//}
 
 	log.Println("Database connected successfully")
+	return db
+}
+*/
+
+func Connect(cfg config.DatabaseConfig) *gorm.DB {
+	// Формируем DSN (Data Source Name) для pgx
+	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=UTC",
+		cfg.Host,
+		cfg.User,
+		cfg.Password,
+		cfg.DBName,
+		cfg.Port,
+	)
+
+	// Подключаемся с помощью нового драйвера
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	if err != nil {
+		log.Fatal("Failed to connect to database:", err)
+	}
+
+	log.Println("Database connection successful")
+
+	// Выполняем автомиграцию
+	err = db.AutoMigrate(&models.User{}, &models.Token{}) // <-- Убедитесь, что все ваши модели здесь
+	if err != nil {
+		log.Fatalf("Failed to migrate database: %v", err)
+	}
+
+	log.Println("Database migrated successfully")
+
 	return db
 }
 

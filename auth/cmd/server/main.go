@@ -33,7 +33,34 @@ func main() {
 
 	// роутер
 	r := gin.Default()
+	/*
+		// --- НАСТРОЙКА РАЗДАЧИ СТАТИКИ ---
 
+		// 1. Путь к папке со статикой
+		staticPath := "./static"
+
+		// 2. Раздаем статические ассеты (JS, CSS, картинки) из /_next
+		r.StaticFS("/_next", http.Dir(filepath.Join(staticPath, "_next")))
+
+		// 3. Раздаем конкретные файлы из корня (favicon и т.д.)
+		r.StaticFile("/favicon.ico", filepath.Join(staticPath, "favicon.ico"))
+
+		// 4. Для всех остальных URL, не являющихся API, отдаем главный index.html
+		// Это ключевой момент для работы роутинга в Next.js (SPA)
+		r.NoRoute(func(c *gin.Context) {
+			// Игнорируем запросы к API
+			if strings.HasPrefix(c.Request.URL.Path, "/api") {
+				c.JSON(http.StatusNotFound, gin.H{"error": "api route not found"})
+				return
+			}
+			// Отдаем главный HTML-файл для всех остальных путей
+			c.File(filepath.Join(staticPath, "index.html"))
+		})
+
+		// --- КОНЕЦ НАСТРОЙКИ СТАТИКИ ---
+
+
+	*/
 	// стаст файлы для фронта
 	r.Static("/static", "./static")
 	r.StaticFile("/", "./static/index.html")

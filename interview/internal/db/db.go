@@ -18,32 +18,31 @@ import (
 //}
 
 func Connect(cfg config.DatabaseConfig) *gorm.DB {
-	// Ждем, пока PostgreSQL будет готов
-	log.Println("Waiting for PostgreSQL to be ready...")
-	if err := waitForDB(cfg); err != nil {
-		log.Fatal("Failed to wait for database:", err)
-	}
+	// Формируем DSN (Data Source Name) для pgx
+	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=UTC",
+		cfg.Host,
+		cfg.User,
+		cfg.Password,
+		cfg.DBName,
+		cfg.Port,
+	)
 
-	// Создаем базу данных если она не существует
-	if err := createDatabaseIfNotExists(cfg); err != nil {
-		log.Fatal("Failed to create database:", err)
-	}
-
-	// Теперь подключаемся к нашей БД
-	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s",
-		cfg.Host, cfg.User, cfg.Password, cfg.DBName, cfg.Port, cfg.SSLMode)
-
+	// Подключаемся с помощью нового драйвера
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
 	}
 
-	// Автомиграция для всех моделей
-	//if err := db.AutoMigrate(&models.User{}, &models.Token{}); err != nil {
-	//	log.Fatal("Failed to migrate database:", err)
+	log.Println("Database connection successful")
+
+	// Выполняем автомиграцию
+	//err = db.AutoMigrate(&models.User{}, &models.Token{}) // <-- Убедитесь, что все ваши модели здесь
+	//if err != nil {
+	//	log.Fatalf("Failed to migrate database: %v", err)
 	//}
 
-	log.Println("Database connected successfully")
+	log.Println("Database migrated successfully")
+
 	return db
 }
 
