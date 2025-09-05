@@ -1,13 +1,9 @@
 package service
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"gorm.io/datatypes"
 	"io"
-	"log"
 	"path/filepath"
 	"strings"
 	"time"
@@ -68,12 +64,13 @@ func (s *resumeService) CreateResume(ctx context.Context, resume *models.Resume,
 		return err
 	}
 
-	vacancy, err := s.vacancyRepo.GetByID(ctx, resume.VacancyID)
+	//_ это vacancy
+	_, err := s.vacancyRepo.GetByID(ctx, resume.VacancyID)
 	if err != nil {
 		return fmt.Errorf("vacancy not found: %w", err)
 	}
 
-	go func() {
+	/* go func() {
 		time.Sleep(1 * time.Second)
 
 		fileData, err := io.ReadAll(io.LimitReader(file, MaxResumeFileSize))
@@ -151,6 +148,8 @@ func (s *resumeService) CreateResume(ctx context.Context, resume *models.Resume,
 		}
 
 	}()
+
+	*/
 
 	limitedReader := io.LimitReader(file, MaxResumeFileSize)
 

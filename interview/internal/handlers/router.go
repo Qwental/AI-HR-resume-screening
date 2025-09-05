@@ -36,13 +36,13 @@ func SetupRouter(
 		// Vacancy routes
 		vacancies := api.Group("/vacancies")
 		{
-			vacancies.GET("", vacancyH.GetAll)                       // GET /api/vacancies (все вакансии)
-			vacancies.POST("", vacancyH.Create)                      // POST /api/vacancies
-			vacancies.GET("/:id/download", vacancyH.GetDownloadLink) // GET /api/vacancies/:id/download
-			vacancies.PUT("/:id", vacancyH.Update)                   // PUT /api/vacancies/:id
-			vacancies.DELETE("/:id", vacancyH.Delete)                // DELETE /api/vacancies/:id
+			vacancies.GET("", vacancyH.GetAll)              // GET /api/vacancies (все вакансии)
+			vacancies.POST("", vacancyH.Create)             // POST /api/vacancies
+			vacancies.GET("/:id", vacancyH.GetDownloadLink) // GET /api/vacancies/:id/download
+			vacancies.PUT("/:id", vacancyH.Update)          // PUT /api/vacancies/:id
+			vacancies.DELETE("/:id", vacancyH.Delete)       // DELETE /api/vacancies/:id
 
-			vacancies.GET("/:vacancy_id/resumes", resumeH.GetByVacancy) // GET /api/vacancies/:vacancy_id/resumes
+			vacancies.GET("/resume/:vacancy_id", resumeH.GetByVacancy) // GET /api/vacancies/:vacancy_id/resumes
 		}
 
 		// Resume routes

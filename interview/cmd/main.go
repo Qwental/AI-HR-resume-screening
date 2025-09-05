@@ -44,16 +44,16 @@ func main() {
 	// Инициализируем S3 storage
 	log.Println("Initializing S3 storage...")
 	s3Client := storage.NewS3Client(
-		getEnv("S3_ENDPOINT", ""),
-		getEnv("S3_REGION", "ru-1"),
-		getEnv("S3_ACCESS_KEY", ""),
-		getEnv("S3_SECRET_KEY", ""),
+		getEnv("AWS_S3_ENDPOINT", ""),
+		getEnv("AWS_REGION", "ru-1"),
+		getEnv("AWS_ACCESS_KEY_ID", ""),
+		getEnv("AWS_SECRET_ACCESS_KEY", ""),
 	)
 
 	s3Storage := storage.NewS3Storage(
 		s3Client,
-		getEnv("S3_BUCKET", "interview-files"),
-		getEnv("S3_REGION", "ru-1"),
+		getEnv("AWS_S3_BUCKET", "interview-files"),
+		getEnv("AWS_REGION", "ru-1"),
 	)
 	log.Println("S3 storage initialized")
 

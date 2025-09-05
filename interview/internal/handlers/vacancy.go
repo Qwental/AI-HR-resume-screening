@@ -113,11 +113,12 @@ func (h *VacancyHandler) GetDownloadLink(c *gin.Context) {
 
 // PUT /api/vacancies/:id - update without file
 func (h *VacancyHandler) Update(c *gin.Context) {
-	id := c.Param("id")
+	id := c.Params.ByName("id")
 
 	var req struct {
 		Title       string  `json:"title" binding:"required"`
 		Description *string `json:"description"`
+		UsersID     string  `json:"users_id"`
 		WeightSoft  int     `json:"weight_soft" binding:"min=0,max=100"`
 		WeightHard  int     `json:"weight_hard" binding:"min=0,max=100"`
 		WeightCase  int     `json:"weight_case" binding:"min=0,max=100"`
@@ -132,6 +133,7 @@ func (h *VacancyHandler) Update(c *gin.Context) {
 		ID:          id,
 		Title:       req.Title,
 		Description: req.Description,
+		UsersID:     req.UsersID,
 		WeightSoft:  req.WeightSoft,
 		WeightHard:  req.WeightHard,
 		WeightCase:  req.WeightCase,

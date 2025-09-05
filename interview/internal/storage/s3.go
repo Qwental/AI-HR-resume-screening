@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"io"
 	"mime"
 	"net/http"
@@ -17,7 +16,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	_ "github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/google/uuid"
 )
 
@@ -28,17 +27,18 @@ type S3Storage struct {
 }
 
 func NewS3Client(endpoint, region, accessKey, secretKey string) *s3.Client {
-	customResolver := aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {
-		return aws.Endpoint{
-			URL:           endpoint,
-			SigningRegion: region,
-			Source:        aws.EndpointSourceCustom,
-		}, nil
-	})
+	// Проверяем, что endpoint не пустой
+	if endpoint == "" {
+		panic("endpoint cannot be empty")
+	}
+
+	// Проверяем формат URL
+	if !strings.HasPrefix(endpoint, "http://") && !strings.HasPrefix(endpoint, "https://") {
+		panic("endpoint must start with http:// or https://")
+	}
 
 	cfg, err := config.LoadDefaultConfig(context.TODO(),
 		config.WithRegion(region),
-		config.WithEndpointResolverWithOptions(customResolver),
 		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey, "")),
 	)
 	if err != nil {
@@ -46,6 +46,8 @@ func NewS3Client(endpoint, region, accessKey, secretKey string) *s3.Client {
 	}
 
 	return s3.NewFromConfig(cfg, func(o *s3.Options) {
+		// Используем BaseEndpoint вместо устаревшего EndpointResolver
+		o.BaseEndpoint = aws.String(endpoint)
 		o.UsePathStyle = true
 	})
 }
@@ -100,31 +102,28 @@ func (s *S3Storage) DownloadFile(ctx context.Context, key string) (io.ReadCloser
 	return result.Body, nil
 }
 
-// Определение Content-Type по содержимому файла
+// Определение Content-Type по содержимому файла - ИСПРАВЛЕННАЯ ВЕРСИЯ
 func (s *S3Storage) detectContentType(filename string, file io.Reader) (string, io.Reader, error) {
 	// Сначала пробуем определить по расширению
 	contentType := s.getContentTypeByExtension(filename)
 
+	// Читаем весь файл в память для создания seekable reader
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return contentType, file, fmt.Errorf("failed to read file: %w", err)
+	}
+
 	// Если получили универсальный тип, пробуем определить по содержимому
 	if contentType == "application/octet-stream" {
-		buffer := make([]byte, 512)
-		n, err := file.Read(buffer)
-		if err != nil && err != io.EOF {
-			return contentType, file, fmt.Errorf("failed to read file for content type detection: %w", err)
-		}
-
-		// Определяем тип по содержимому
-		detectedType := http.DetectContentType(buffer[:n])
+		// Определяем тип по содержимому (используем первые 512 байт)
+		detectedType := http.DetectContentType(data)
 		if detectedType != "application/octet-stream" {
 			contentType = detectedType
 		}
-
-		// Создаем новый reader, объединяя прочитанные байты с остальным файлом
-		newReader := io.MultiReader(bytes.NewReader(buffer[:n]), file)
-		return contentType, newReader, nil
 	}
 
-	return contentType, file, nil
+	// Возвращаем seekable reader
+	return contentType, bytes.NewReader(data), nil
 }
 
 // Универсальный метод загрузки файлов
@@ -136,11 +135,19 @@ func (s *S3Storage) UploadFile(ctx context.Context, file io.Reader, filename, fo
 	fileID := uuid.New().String()
 	key := fmt.Sprintf("%s/%s", folder, fileID)
 
-	// Определяем Content-Type
+	// Определяем Content-Type и получаем seekable reader
 	contentType, processedFile, err := s.detectContentType(filename, file)
 	if err != nil {
 		return "", fmt.Errorf("failed to detect content type: %w", err)
 	}
+
+	// Логируем информацию о запросе
+	fmt.Printf("=== S3 UPLOAD DEBUG ===\n")
+	fmt.Printf("Bucket: %s\n", s.bucketName)
+	fmt.Printf("Key: %s\n", key)
+	fmt.Printf("Region: %s\n", s.region)
+	fmt.Printf("Expected URL: %s/%s/%s\n", "https://s3.cloud.ru", s.bucketName, key)
+	fmt.Printf("=======================\n")
 
 	_, err = s.client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:      aws.String(s.bucketName),
@@ -150,9 +157,11 @@ func (s *S3Storage) UploadFile(ctx context.Context, file io.Reader, filename, fo
 	})
 
 	if err != nil {
+		fmt.Printf("S3 Upload Error: %v\n", err)
 		return "", fmt.Errorf("failed to upload file to S3: %w", err)
 	}
 
+	fmt.Printf("✅ Upload successful!\n")
 	return key, nil
 }
 
@@ -166,7 +175,7 @@ func (s *S3Storage) UploadVacancyFile(ctx context.Context, file io.Reader, filen
 	return s.UploadFile(ctx, file, filename, "vacancies")
 }
 
-// Ссылка
+// Генерация presigned URL
 func (s *S3Storage) GeneratePresignedURL(ctx context.Context, key string, expiration time.Duration) (string, error) {
 	if key == "" {
 		return "", fmt.Errorf("key cannot be empty")
