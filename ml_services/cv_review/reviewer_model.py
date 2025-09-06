@@ -35,19 +35,19 @@ class GPTReviewer(ReviewerModel):
             api_key=self.token,
             base_url=self.url,
         )
-    
-    def review(self, vacancy: str, cv: str):        
+
+    def review(self, vacancy: str, cv: str):
         self.system_prompt = self.system_prompt.replace('<vac>', vacancy)
-        chat_completion = self.client.chat.completions.create(model=self.model_name, 
+        chat_completion = self.client.chat.completions.create(model=self.model_name,
                                                               messages=[
-                                                                {
-                                                                    "role": "system",
-                                                                    "content": self.system_prompt
-                                                                },
-                                                                {      
-                                                                    "role": "user",
-                                                                    "content": f'РЕЗЮМЕ\n{cv}'
-                                                                }])
+                                                                  {
+                                                                      "role": "system",
+                                                                      "content": self.system_prompt
+                                                                  },
+                                                                  {
+                                                                      "role": "user",
+                                                                      "content": f'РЕЗЮМЕ\n{cv}'
+                                                                  }])
         # headers = {
         #     "Content-Type": "application/json",
         #     "Authorization": f"Bearer {self.token}"

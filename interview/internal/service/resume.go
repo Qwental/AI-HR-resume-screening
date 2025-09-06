@@ -229,8 +229,11 @@ func (s *resumeService) processResumeAsync(resume *models.Resume, fileData []byt
 	message := broker.ResumeMessage{
 		ID:          resume.ID,
 		VacancyID:   resume.VacancyID,
-		TextResume:  resumeTextJSON,  // JSON с текстом резюме
-		TextVacancy: vacancyTextJSON, // JSON с текстом вакансии
+		TextResume:  resumeTextJSON,     // JSON с текстом резюме
+		TextVacancy: vacancyTextJSON,    // JSON с текстом вакансии
+		WeightSoft:  vacancy.WeightSoft, // Вес soft skills
+		WeightHard:  vacancy.WeightHard, // Вес hard skills
+		WeightCase:  vacancy.WeightCase, // Вес кейсов/опыта
 	}
 
 	// Отправляем сообщение

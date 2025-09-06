@@ -1,4 +1,3 @@
-
 services:
   db:
     image: postgres:15
@@ -10,7 +9,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ./db_data:/var/lib/postgresql/data # Используем локальную папку для данных
+      - ./db_data:/var/lib/postgresql/data
       - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
@@ -26,7 +25,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - DB_HOST=db # Указываем имя сервиса БД
+      - DB_HOST=db
       - DB_USER=${DB_USER}
       - DB_PASSWORD=${DB_PASSWORD}
       - DB_NAME=${DB_NAME}
@@ -50,7 +49,6 @@ services:
     ports:
       - "8081:8081"
     environment:
-      # Настройки БД
       - DB_HOST=db
       - DB_USER=${DB_USER}
       - DB_PASSWORD=${DB_PASSWORD}
@@ -60,7 +58,6 @@ services:
       - AWS_ACCESS_KEY_ID=${MINIO_ACCESS_KEY}
       - AWS_SECRET_ACCESS_KEY=${MINIO_SECRET_KEY}
       - AWS_S3_BUCKET=${MINIO_BUCKET}
-      # Другие переменные
       - GIN_MODE=${GIN_MODE}
       - RABBITMQ_URL=${RABBITMQ_URL}
       - PORT=8081
@@ -75,20 +72,61 @@ services:
       - ai_hr_net
     restart: unless-stopped
 
+  cv-review:
+    build: ./ml_services/cv_review
+    container_name: ai-hr-cv-review
+    ports:
+      - "5030:5030"
+    environment:
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_URL=${RABBITMQ_URL}
+      - PROXY_API_TOKEN=${PROXY_API_TOKEN}
+      - TOKEN=${TOKEN}
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - ai_hr_net
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:5030/health" ]
+      interval: 15s        # Чаще проверяем
+      timeout: 5s          # Меньше таймаут
+      retries: 5           # Больше попыток
+      start_period: 30s    # Даем время на старт
+
+
+  cv-consumer:
+    build: ./ml_services/cv_review
+    container_name: ai-hr-cv-consumer
+    environment:
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_URL=${RABBITMQ_URL}
+      - CV_REVIEW_SERVICE=http://cv-review:5030  # ✅ Исправлен порт
+      - PYTHONUNBUFFERED=1                       # ✅ Добавлена переменная
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      cv-review:
+        condition: service_healthy
+    networks:
+      - ai_hr_net
+    restart: unless-stopped
+    command: ["python", "consumer.py"]
 
   minio:
     image: minio/minio:latest
     container_name: ai-hr-minio
     command: server /data --console-address ":9001"
     environment:
-      # Настраиваем MinIO с помощью тех же ключей
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
     ports:
       - "9000:9000"
       - "9001:9001"
     volumes:
-      - ./minio_data:/data # Используем локальную папку для данных
+      - ./minio_data:/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 30s
@@ -104,7 +142,7 @@ services:
       - "5672:5672"
       - "15672:15672"
     volumes:
-      - ./rabbitmq_data:/var/lib/rabbitmq # Используем локальную папку для данных
+      - ./rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
       test: rabbitmq-diagnostics -q ping
       interval: 30s
@@ -112,8 +150,6 @@ services:
       retries: 3
     networks:
       - ai_hr_net
-
-
 
 networks:
   ai_hr_net:
