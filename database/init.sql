@@ -37,23 +37,27 @@ CREATE TABLE IF NOT EXISTS vacancies (
                                          created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
                                          updated_at TIMESTAMPTZ,
                                          file_url TEXT,
+                                         storage_key VARCHAR(255),
                                          weight_soft INT NOT NULL DEFAULT 33,
                                          weight_hard INT NOT NULL DEFAULT 33,
                                          weight_case INT NOT NULL DEFAULT 34,
                                          text_jsonb JSONB
 );
+CREATE INDEX IF NOT EXISTS idx_vacancies_storage_key ON vacancies(storage_key);
 
 -- ТАБЛИЦА РЕЗЮМЕ
 CREATE TABLE IF NOT EXISTS resumes (
                                        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
                                        vacancy_id UUID NOT NULL REFERENCES vacancies(id) ON DELETE CASCADE,
                                        file_url TEXT,
+                                       storage_key VARCHAR(255),
                                        text_jsonb JSONB,
                                        status TEXT,
                                        mail TEXT,
                                        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
                                        result_jsonb JSONB
 );
+CREATE INDEX IF NOT EXISTS idx_resumes_storage_key ON resumes(storage_key);
 
 -- ТАБЛИЦА ИНТЕРВЬЮ
 CREATE TABLE IF NOT EXISTS interviews (

@@ -60,15 +60,21 @@ func NewResumeService(
 }
 
 func (s *resumeService) validateFileType(filename string) error {
-	allowedExts := []string{".pdf", ".doc", ".docx", ".txt", ".rtf"}
-	ext := strings.ToLower(filepath.Ext(filename))
+	if filename == "" {
+		return fmt.Errorf("filename cannot be empty")
+	}
 
-	for _, allowed := range allowedExts {
-		if ext == allowed {
+	ext := strings.ToLower(filepath.Ext(filename))
+	allowedExts := []string{".docx", ".pdf", ".txt"}
+
+	for _, allowedExt := range allowedExts {
+		if ext == allowedExt {
 			return nil
 		}
 	}
-	return fmt.Errorf("unsupported file type: %s", ext)
+
+	return fmt.Errorf("unsupported file type: %s. Allowed types: %s",
+		ext, strings.Join(allowedExts, ", "))
 }
 
 func (s *resumeService) CreateResume(ctx context.Context, resume *models.Resume, file io.Reader, filename string) error {
@@ -85,11 +91,23 @@ func (s *resumeService) CreateResume(ctx context.Context, resume *models.Resume,
 		return fmt.Errorf("vacancy not found: %w", err)
 	}
 
-	// Читаем файл сначала (чтобы можно было использовать в горутине)
+	// Читаем файл с ограничением размера
 	fileData, err := io.ReadAll(io.LimitReader(file, MaxResumeFileSize))
 	if err != nil {
 		return fmt.Errorf("failed to read file: %w", err)
 	}
+
+	// Дополнительная валидация содержимого файла
+	if len(fileData) == 0 {
+		return fmt.Errorf("file is empty")
+	}
+
+	fileType := detectFileType(fileData)
+	if fileType == FileTypeUnknown {
+		return fmt.Errorf("unsupported file format. Please upload DOCX, PDF or TXT file")
+	}
+
+	log.Printf("📄 Processing %s file: %s (%d bytes)", getFileTypeName(fileType), filename, len(fileData))
 
 	// Загружаем файл в S3
 	storageKey, err := s.storage.UploadResume(ctx, bytes.NewReader(fileData), filename)
@@ -102,9 +120,14 @@ func (s *resumeService) CreateResume(ctx context.Context, resume *models.Resume,
 	resume.CreatedAt = time.Now()
 
 	if err := s.repo.Create(ctx, resume); err != nil {
-		s.storage.DeleteFile(ctx, storageKey)
+		// Если создание записи в БД не удалось, удаляем файл из S3
+		if deleteErr := s.storage.DeleteFile(ctx, storageKey); deleteErr != nil {
+			log.Printf("❌ Failed to cleanup uploaded file after DB error: %v", deleteErr)
+		}
 		return fmt.Errorf("failed to create resume: %w", err)
 	}
+
+	log.Printf("✅ Resume created successfully: %s", resume.ID)
 
 	// Асинхронно обрабатываем и отправляем в брокер
 	go s.processResumeAsync(resume, fileData, vacancy)
@@ -116,12 +139,19 @@ func (s *resumeService) CreateResume(ctx context.Context, resume *models.Resume,
 func (s *resumeService) processResumeAsync(resume *models.Resume, fileData []byte, vacancy *models.Vacancy) {
 	ctx := context.Background()
 
-	// Извлекаем текст из резюме
-	resumeText, err := extractResumeFromDocx(bytes.NewReader(fileData))
+	// Извлекаем текст из резюме с использованием универсальной функции
+	resumeText, err := ExtractTextFromFile(fileData, resume.StorageKey)
 	if err != nil {
-		log.Printf("Failed to extract resume text for %s: %v", resume.ID, err)
-		resumeText = "" // Отправим пустой текст, если не удалось извлечь
+		log.Printf("❌ Не удалось извлечь текст резюме для %s: %v", resume.ID, err)
+
+		// Обновляем статус резюме на error
+		if updateErr := s.repo.UpdateStatus(ctx, resume.ID, ResumeStatusError); updateErr != nil {
+			log.Printf("Failed to update resume status to error: %v", updateErr)
+		}
+		return
 	}
+
+	log.Printf("✅ Успешно извлечен текст резюме %s: %d символов", resume.ID, len(resumeText))
 
 	// Подготавливаем текст вакансии
 	var vacancyTextJSON datatypes.JSON
@@ -187,6 +217,8 @@ func (s *resumeService) processResumeAsync(resume *models.Resume, fileData []byt
 			"text":         resumeText,
 			"extracted_at": time.Now(),
 			"file_name":    resume.StorageKey,
+			"file_type":    string(getFileTypeName(detectFileType(fileData))),
+			"size_bytes":   len(fileData),
 		}
 		if jsonData, err := json.Marshal(resumeDataMap); err == nil {
 			resumeTextJSON = datatypes.JSON(jsonData)

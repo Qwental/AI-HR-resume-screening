@@ -21,7 +21,9 @@ func main() {
 	utils.InitJWT(&cfg.JWT)
 
 	db := database.Connect(cfg.Database) // коннект к базе по данным из кфг
-
+	//if err := database.RunMigrations(db); err != nil {
+	//	log.Fatalf("Failed to migrate database: %v", err)
+	//}
 	// создаем сервисы
 	authRepo := auth.NewRepository(db)
 	tokenService := auth.NewTokenService(db)               // НОВОЕ: сервис токенов

@@ -1,8 +1,7 @@
-package db
+package database
 
 import (
-	"interview/internal/models"
-
+	"ai-hr-service/internal/models"
 	"fmt"
 	"gorm.io/gorm"
 )
@@ -10,9 +9,8 @@ import (
 func RunMigrations(db *gorm.DB) error {
 	// Автоматические миграции для всех моделей auth сервиса
 	err := db.AutoMigrate(
-		&models.Vacancy{},
-		&models.Resume{},
-		&models.Interview{},
+		&models.User{},
+		&models.Token{},
 	)
 
 	if err != nil {
