@@ -51,11 +51,13 @@ CREATE TABLE IF NOT EXISTS resumes (
                                        vacancy_id UUID NOT NULL REFERENCES vacancies(id) ON DELETE CASCADE,
                                        file_url TEXT,
                                        storage_key VARCHAR(255),
-                                       text_jsonb JSONB,
+                                       text TEXT,
                                        status TEXT,
                                        mail TEXT,
                                        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                                       result_jsonb JSONB
+                                       result_jsonb JSONB,
+                                       resume_analysis_jsonb JSONB
+
 );
 CREATE INDEX IF NOT EXISTS idx_resumes_storage_key ON resumes(storage_key);
 

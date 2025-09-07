@@ -104,17 +104,26 @@ services:
     environment:
       - RABBITMQ_HOST=rabbitmq
       - RABBITMQ_URL=${RABBITMQ_URL}
-      - CV_REVIEW_SERVICE=http://cv-review:5030  # ✅ Исправлен порт
-      - PYTHONUNBUFFERED=1                       # ✅ Добавлена переменная
+      - CV_REVIEW_SERVICE=http://cv-review:5030
+      - PYTHONUNBUFFERED=1
+      # 🆕 Добавляем переменные для БД
+      - DB_HOST=db
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - DB_PORT=5432
     depends_on:
       rabbitmq:
         condition: service_healthy
       cv-review:
         condition: service_healthy
+      db:  # 🆕 Добавляем зависимость от БД
+        condition: service_healthy
     networks:
       - ai_hr_net
     restart: unless-stopped
     command: ["python", "consumer.py"]
+
 
   minio:
     image: minio/minio:latest
