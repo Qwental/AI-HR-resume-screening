@@ -31,6 +31,7 @@ type ResumeService interface {
 	DeleteResume(ctx context.Context, id string) error
 	UpdateStatus(ctx context.Context, id, status string) error
 	UpdateStatusAndResult(ctx context.Context, id, status string, result map[string]interface{}) error
+	UpdateResult(ctx context.Context, id string, result map[string]interface{}) error
 }
 
 type resumeService struct {
@@ -245,4 +246,9 @@ func (s *resumeService) UpdateStatusAndResult(ctx context.Context, id, status st
 	}
 
 	return s.repo.UpdateStatusAndResult(ctx, id, status, result)
+}
+
+func (s *resumeService) UpdateResult(ctx context.Context, id string, result map[string]interface{}) error {
+
+	return s.repo.UpdateResult(ctx, id, result)
 }

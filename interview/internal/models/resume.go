@@ -18,6 +18,7 @@ type Resume struct {
 	FileURL string `json:"file_url,omitempty" gorm:"-"`
 
 	Mail string `json:"mail"`
+	Text string `json:"text"`
 
 	Result datatypes.JSON `gorm:"type:jsonb;column:result_jsonb" json:"result_jsonb,omitempty"`
 }

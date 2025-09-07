@@ -9,10 +9,12 @@ func SetupRouter(
 	vacancySvc service.VacancyService,
 	resumeSvc service.ResumeService,
 	interviewSvc service.InterviewService,
+	aiSvc service.AIService,
+	chatSvc service.ChatService,
 ) *gin.Engine {
 	r := gin.Default()
 
-	// CORS middleware (если нужно)
+	// CORS middleware
 	r.Use(func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", "*")
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
@@ -30,6 +32,7 @@ func SetupRouter(
 	vacancyH := NewVacancyHandler(vacancySvc)
 	resumeH := NewResumeHandler(resumeSvc)
 	interviewH := NewHandler(interviewSvc)
+	chatH := NewChatHandler(chatSvc, interviewSvc)
 
 	api := r.Group("/api")
 	{
@@ -55,14 +58,25 @@ func SetupRouter(
 			resumes.DELETE("/:id", resumeH.Delete)                // DELETE /api/resumes/:id
 		}
 
+		// Admin interview routes
+		admin := api.Group("/admin/interviews")
+		{
+			admin.POST("", interviewH.Create) // POST /api/admin/interviews
+		}
 	}
 
 	// Public routes (для кандидатов)
 	public := r.Group("/interview")
 	{
+		// Существующие роуты интервью
 		public.GET("/:token", interviewH.GetByToken)            // GET /interview/:token
 		public.POST("/:token/start", interviewH.StartByToken)   // POST /interview/:token/start
 		public.POST("/:token/finish", interviewH.FinishByToken) // POST /interview/:token/finish
+
+		// Новые чат-роуты
+		public.POST("/:token/message", chatH.SendMessage) // POST /interview/:token/message
+		public.GET("/:token/messages", chatH.GetMessages) // GET /interview/:token/messages
+		public.GET("/:token/status", chatH.GetStatus)     // GET /interview/:token/status
 	}
 
 	return r
