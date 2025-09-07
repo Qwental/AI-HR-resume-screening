@@ -1,0 +1,188 @@
+"use client";
+import { useState } from "react";
+import Layout from "../components/Layout";
+import { vacancies as mockVacancies } from "../utils/mockApi";
+import VacancyEditor from "../components/VacancyEditor";
+import VacancyForm from "../components/VacancyForm";
+import CandidateCard from "../components/CandidateCard";
+
+export default function VacanciesPage() {
+  const [vacancies, setVacancies] = useState(mockVacancies);
+  const [selectedVacancy, setSelectedVacancy] = useState(null);
+  const [creating, setCreating] = useState(false);
+  const [vacancyWeights, setVacancyWeights] = useState(null);
+  const [filter, setFilter] = useState("");
+
+  // --- НОВАЯ ФУНКЦИЯ: Удаление вакансии ---
+  const handleDeleteVacancy = (vacancyId) => {
+    // Запрашиваем подтверждение перед удалением
+    if (window.confirm("Вы уверены, что хотите удалить эту вакансию? Это действие необратимо.")) {
+      // Создаем новый массив, отфильтровав удаляемую вакансию
+      const updatedVacancies = vacancies.filter((vacancy) => vacancy.id !== vacancyId);
+      // Обновляем состояние
+      setVacancies(updatedVacancies);
+      // Возвращаемся к списку всех вакансий
+      setSelectedVacancy(null);
+    }
+  };
+
+  // --- Блок детального отображения вакансии ---
+  if (selectedVacancy) {
+    return (
+      <Layout title={`Вакансия: ${selectedVacancy.title}`}>
+        <div className="flex justify-between items-center mb-6">
+          <button
+            onClick={() => setSelectedVacancy(null)}
+            className="btn btn-accent"
+          >
+            ← Назад
+          </button>
+        </div>
+
+        <div className="card p-6 space-y-6 bg-white dark:bg-gray-900 shadow-md rounded-lg">
+          <h2 className="text-2xl font-bold">{selectedVacancy.title}</h2>
+
+          <h4 className="text-sm text-gray-500 dark:text-gray-400 mb-2">
+            Редактировать веса критериев:
+          </h4>
+          <VacancyEditor
+            vacancy={selectedVacancy}
+            onChange={(newWeights) => setVacancyWeights(newWeights)}
+          />
+
+          {/* Контейнер для кнопок "Сохранить" и "Удалить" */}
+          <div className="flex items-center gap-4 pt-2">
+            <button
+              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-md transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400"
+              onClick={() => {
+                const total =
+                  (vacancyWeights?.tech || 0) +
+                  (vacancyWeights?.comm || 0) +
+                  (vacancyWeights?.cases || 0);
+
+                if (total > 100) {
+                  alert("Сумма весов не должна превышать 100%");
+                  return;
+                }
+
+                selectedVacancy.weights = vacancyWeights;
+                alert("Вес критериев обновлён!");
+              }}
+            >
+              Сохранить
+            </button>
+
+            {/* НОВАЯ КНОПКА: Удалить вакансию */}
+            <button
+              onClick={() => handleDeleteVacancy(selectedVacancy.id)}
+              className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg shadow-md transition-colors focus:outline-none focus:ring-2 focus:ring-red-400"
+            >
+              Удалить вакансию
+            </button>
+          </div>
+
+          <h4 className="text-sm text-gray-500 dark:text-gray-400 mt-6">Кандидаты:</h4>
+          {selectedVacancy.candidates.length === 0 ? (
+            <p className="text-gray-500 dark:text-gray-400">Нет кандидатов</p>
+          ) : (
+            <ul>
+              {selectedVacancy.candidates.map((candidate) => (
+                <CandidateCard key={candidate.id} candidate={candidate} />
+              ))}
+            </ul>
+          )}
+        </div>
+      </Layout>
+    );
+  }
+
+  // --- Блок создания новой вакансии ---
+  if (creating) {
+    return (
+      <Layout title="Создать вакансию">
+        <VacancyForm
+          onSave={(newVacancy) => {
+            setVacancies([...vacancies, newVacancy]);
+            setCreating(false);
+          }}
+          onCancel={() => setCreating(false)}
+        />
+      </Layout>
+    );
+  }
+
+  // Фильтрация для основного списка
+  const filteredVacancies = vacancies.filter((v) =>
+    v.title.toLowerCase().includes(filter.toLowerCase())
+  );
+
+  // --- Блок отображения списка всех вакансий ---
+  return (
+    <Layout title="Вакансии">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 gap-4">
+        <div className="relative w-full md:max-w-sm">
+          <input
+            type="text"
+            placeholder="Поиск вакансий..."
+            className="w-full pl-4 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-shadow"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+          />
+        </div>
+
+        <button
+          onClick={() => setCreating(true)}
+          className="flex items-center justify-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-md transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400"
+        >
+          + Создать вакансию
+        </button>
+      </div>
+
+      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredVacancies.map((v) => (
+          <div
+            key={v.id}
+            className="card p-6 cursor-pointer rounded-lg bg-white dark:bg-gray-900 shadow-md hover:shadow-lg transition flex flex-col justify-between"
+            onClick={() => {
+              setSelectedVacancy(v);
+              setVacancyWeights(v.weights);
+            }}
+          >
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                  {v.title}
+                </h3>
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  Вес критериев
+                </span>
+              </div>
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <span>Технические</span>
+                  <span className="font-semibold text-blue-600">{v.weights.tech}%</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Коммуникация</span>
+                  <span className="font-semibold text-blue-600">{v.weights.comm}%</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Кейсы</span>
+                  <span className="font-semibold text-blue-600">{v.weights.cases}%</span>
+                </div>
+              </div>
+            </div>
+
+            <button className="btn btn-primary mt-4 w-full">Открыть</button>
+          </div>
+        ))}
+
+        {filteredVacancies.length === 0 && (
+          <p className="text-gray-500 dark:text-gray-400 col-span-full text-center">
+            Вакансии не найдены
+          </p>
+        )}
+      </div>
+    </Layout>
+  );
+}
