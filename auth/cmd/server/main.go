@@ -6,6 +6,7 @@ import (
 	"ai-hr-service/internal/database"
 	"ai-hr-service/internal/middleware"
 	"ai-hr-service/internal/utils"
+	"github.com/gin-contrib/cors"
 	"log"
 	"net/http"
 	"time"
@@ -35,40 +36,23 @@ func main() {
 
 	// роутер
 	r := gin.Default()
-	/*
-		// --- НАСТРОЙКА РАЗДАЧИ СТАТИКИ ---
 
-		// 1. Путь к папке со статикой
-		staticPath := "./static"
-
-		// 2. Раздаем статические ассеты (JS, CSS, картинки) из /_next
-		r.StaticFS("/_next", http.Dir(filepath.Join(staticPath, "_next")))
-
-		// 3. Раздаем конкретные файлы из корня (favicon и т.д.)
-		r.StaticFile("/favicon.ico", filepath.Join(staticPath, "favicon.ico"))
-
-		// 4. Для всех остальных URL, не являющихся API, отдаем главный index.html
-		// Это ключевой момент для работы роутинга в Next.js (SPA)
-		r.NoRoute(func(c *gin.Context) {
-			// Игнорируем запросы к API
-			if strings.HasPrefix(c.Request.URL.Path, "/api") {
-				c.JSON(http.StatusNotFound, gin.H{"error": "api route not found"})
-				return
-			}
-			// Отдаем главный HTML-файл для всех остальных путей
-			c.File(filepath.Join(staticPath, "index.html"))
-		})
-
-		// --- КОНЕЦ НАСТРОЙКИ СТАТИКИ ---
-
-
-	*/
 	// стаст файлы для фронта
-	r.Static("/static", "./static")
-	r.StaticFile("/", "./static/index.html")
-	r.StaticFile("/login", "./static/login.html")
-	r.StaticFile("/register", "./static/register.html")
-	r.StaticFile("/dashboard", "./static/dashboard.html")
+	//r.Static("/static", "./static")
+	//r.StaticFile("/", "./static/index.html")
+	//r.StaticFile("/login", "./static/login.html")
+	//r.StaticFile("/register", "./static/register.html")
+	//r.StaticFile("/dashboard", "./static/dashboard.html")
+
+	// НОВОЕ: Настройка CORS для работы с Next.js
+	r.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:3000", "http://frontend:3000"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}))
 
 	// Health check endpoint
 	r.GET("/health", func(c *gin.Context) {

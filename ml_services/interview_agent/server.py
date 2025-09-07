@@ -11,6 +11,8 @@ import os
 from dotenv import load_dotenv
 
 #configs
+
+# Это с брокера
 try:
     load_dotenv()
     API_TOKEN = os.getenv('PROXY_API_TOKEN')
@@ -208,7 +210,10 @@ async def get_interview_reply(request: InterviewRequest):
     try:
 
         # start a dialoge
-        # VACANCY, CV, SKILL_WEIGHTS must be from broker
+        # VACANCY, CV, SKILL_WEIGHTS must be from broker, Это с брокера
+
+
+
         if len(request.conversation) == 1 and request.conversation[0].type == 'string':
             start_prompt = INTERVIEW_PROMPT.replace('<vacancy>', VACANCY).replace('<resume>', CV).replace('<skills_weights>', SKILLWEIGHTS)
             request.conversation[0].type = 'system'
