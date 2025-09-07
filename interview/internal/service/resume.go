@@ -153,6 +153,15 @@ func (s *resumeService) processResumeAsync(resume *models.Resume, fileData []byt
 
 	log.Printf("✅ Успешно извлечен текст резюме %s: %d символов", resume.ID, len(resumeText))
 
+	// --- НОВОЕ: сохраняем ПЛЕЙН-ТЕКСТ в БД (колонка text)
+	if err := s.repo.UpdateText(ctx, resume.ID, resumeText); err != nil {
+		log.Printf("❌ Не удалось сохранить текст резюме в БД для %s: %v", resume.ID, err)
+		// продолжаем процесс, чтобы не блокировать анализ
+	} else {
+		log.Printf("💾 Текст резюме %s сохранен в БД (колонка text)", resume.ID)
+	}
+	// --- КОНЕЦ НОВОГО БЛОКА ---
+
 	// Подготавливаем текст вакансии
 	var vacancyTextJSON datatypes.JSON
 	var vacancyData *Job
