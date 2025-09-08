@@ -3,188 +3,104 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import Layout from '../../components/Layout';
-import ResumeUploadForm from '../../components/ResumeUploadForm';
-import { isAuthenticated, apiRequest } from '../../utils/auth';
+import { useAuthStore } from '../../utils/store';
+import { getToken } from '../../utils/auth';
 
 export default function VacanciesPage() {
     const router = useRouter();
+    const { isAuthenticated } = useAuthStore();
     const [vacancies, setVacancies] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [selectedVacancy, setSelectedVacancy] = useState(null);
+    const [error, setError] = useState('');
 
     useEffect(() => {
-        if (!isAuthenticated()) {
+        if (!isAuthenticated) {
             router.push('/login');
             return;
         }
-        fetchVacancies();
-    }, []);
 
-    const fetchVacancies = async () => {
-        try {
-            // ✅ ИСПРАВЛЕНО: Используем прямой путь к interview сервису
-            const response = await fetch('http://localhost:8081/api/vacancies');
-            if (response.ok) {
-                const data = await response.json();
-                // ✅ ИСПРАВЛЕНО: Правильное извлечение данных
-                setVacancies(data.vacancies || []);
-            } else {
-                console.error('Failed to fetch vacancies:', response.status);
+        const fetchVacancies = async () => {
+            setLoading(true);
+            setError('');
+            const token = getToken();
+
+            try {
+                // ✅ ПРАВИЛЬНЫЙ URL и АВТОРИЗАЦИЯ
+                const response = await fetch('/api/vacancies', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                    },
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    setVacancies(data.vacancies || []);
+                } else {
+                    const errorData = await response.json();
+                    setError(errorData.error || 'Не удалось загрузить вакансии.');
+                }
+            } catch (error) {
+                console.error('Error fetching vacancies:', error);
+                setError('Ошибка сети при загрузке вакансий.');
+            } finally {
+                setLoading(false);
             }
-        } catch (error) {
-            console.error('Error fetching vacancies:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
+        };
 
-
-    const handleResumeUploaded = (resume) => {
-        // Обновляем список резюме для вакансии
-        setVacancies(prev =>
-            prev.map(vacancy =>
-                vacancy.id === selectedVacancy?.id
-                    ? { ...vacancy, resumes: [...(vacancy.resumes || []), resume] }
-                    : vacancy
-            )
-        );
-        setSelectedVacancy(null);
-    };
-
-    if (loading) {
-        return (
-            <div className="flex justify-center items-center min-h-screen">
-                <div className="text-lg">Загрузка...</div>
-            </div>
-        );
-    }
+        fetchVacancies();
+    }, [isAuthenticated, router]);
 
     return (
-        <>
+        <Layout>
             <Head>
-                <title>Вакансии - HR Avatar</title>
+                <title>Список вакансий - HR Avatar</title>
             </Head>
-
-            <Layout title="Управление вакансиями">
-                <div className="container mx-auto px-4 py-8">
-                    <div className="flex justify-between items-center mb-8">
-                        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-                            Вакансии
-                        </h1>
-                        <Link href="/vacancies/create">
-                            <a className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700">
-                                Создать вакансию
-                            </a>
-                        </Link>
-                    </div>
-
-                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                        {vacancies.map((vacancy) => (
-                            <div key={vacancy.id} className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-                                <div className="flex justify-between items-start mb-4">
-                                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                                        {vacancy.title}
-                                    </h3>
-                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                    Активна
-                  </span>
-                                </div>
-
-                                <p className="text-gray-600 dark:text-gray-400 mb-4 line-clamp-3">
-                                    {vacancy.description}
-                                </p>
-
-                                <div className="flex justify-between items-center text-sm text-gray-500 dark:text-gray-400 mb-4">
-                                    <span>{vacancy.resumes?.length || 0} резюме</span>
-                                    <span>Создана: {new Date(vacancy.created_at).toLocaleDateString()}</span>
-                                </div>
-
-                                <div className="grid grid-cols-3 gap-2 text-xs text-gray-600 dark:text-gray-400 mb-4">
-                                    <div className="text-center">
-                                        <div className="font-medium">Soft</div>
-                                        <div>{vacancy.weight_soft}%</div>
-                                    </div>
-                                    <div className="text-center">
-                                        <div className="font-medium">Hard</div>
-                                        <div>{vacancy.weight_hard}%</div>
-                                    </div>
-                                    <div className="text-center">
-                                        <div className="font-medium">Опыт</div>
-                                        <div>{vacancy.weight_case}%</div>
-                                    </div>
-                                </div>
-
-                                <div className="flex space-x-2">
-                                    <button
-                                        onClick={() => setSelectedVacancy(vacancy)}
-                                        className="flex-1 px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md"
-                                    >
-                                        Добавить резюме
-                                    </button>
-                                    <Link href={`/vacancies/${vacancy.id}`}>
-                                        <a className="flex-1 px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md text-center">
-                                            Просмотр
-                                        </a>
-                                    </Link>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-
-                    {vacancies.length === 0 && (
-                        <div className="text-center py-12">
-                            <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                            <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">
-                                Нет вакансий
-                            </h3>
-                            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                                Создайте первую вакансию для начала работы
-                            </p>
-                            <div className="mt-6">
-                                <Link href="/vacancies/create">
-                                    <a className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
-                                        Создать вакансию
-                                    </a>
-                                </Link>
-                            </div>
-                        </div>
-                    )}
+            <div className="max-w-7xl mx-auto py-10 px-4">
+                <div className="flex justify-between items-center mb-8">
+                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Вакансии</h1>
+                    <Link href="/vacancies/create" className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md">
+                        + Создать вакансию
+                    </Link>
                 </div>
 
-                {/* Модальное окно для загрузки резюме */}
-                {selectedVacancy && (
-                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-                        <div className="bg-white dark:bg-gray-800 rounded-lg max-w-lg w-full max-h-[90vh] overflow-y-auto">
-                            <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-                                <div className="flex justify-between items-center">
-                                    <h3 className="text-lg font-medium">
-                                        Добавить резюме к вакансии
-                                    </h3>
-                                    <button
-                                        onClick={() => setSelectedVacancy(null)}
-                                        className="text-gray-400 hover:text-gray-600"
-                                    >
-                                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                        </svg>
-                                    </button>
-                                </div>
-                                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                                    {selectedVacancy.title}
-                                </p>
-                            </div>
-                            <div className="p-4">
-                                <ResumeUploadForm
-                                    vacancyId={selectedVacancy.id}
-                                    onSuccess={handleResumeUploaded}
-                                />
-                            </div>
-                        </div>
+                {loading && <p>Загрузка вакансий...</p>}
+                {error && <div className="bg-red-100 text-red-700 p-4 rounded-md">{error}</div>}
+
+                {!loading && !error && (
+                    <div className="bg-white dark:bg-gray-800 shadow-lg rounded-lg overflow-hidden">
+                        <table className="min-w-full">
+                            <thead className="bg-gray-50 dark:bg-gray-700">
+                            <tr>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Название</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Статус</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Дата создания</th>
+                                <th className="relative px-6 py-3"><span className="sr-only">Действия</span></th>
+                            </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                            {vacancies.length > 0 ? vacancies.map((vacancy) => (
+                                <tr key={vacancy.id} className="hover:bg-gray-50 dark:hover:bg-gray-600">
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{vacancy.title}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
+                                        <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Активна</span>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{new Date(vacancy.created_at).toLocaleDateString()}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                        <a href="#" className="text-indigo-600 hover:text-indigo-900">Подробнее</a>
+                                    </td>
+                                </tr>
+                            )) : (
+                                <tr>
+                                    <td colSpan="4" className="text-center py-10 text-gray-500">
+                                        Нет активных вакансий. <Link href="/vacancies/create" className="text-indigo-600">Создайте первую!</Link>
+                                    </td>
+                                </tr>
+                            )}
+                            </tbody>
+                        </table>
                     </div>
                 )}
-            </Layout>
-        </>
+            </div>
+        </Layout>
     );
 }
