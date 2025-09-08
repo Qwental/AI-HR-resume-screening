@@ -6,14 +6,11 @@ import { getToken } from '../utils/auth';
 export default function ResumeUploadForm({ vacancyId, onSuccess }) {
     const [loading, setLoading] = useState(false);
     const [file, setFile] = useState(null);
-    const [candidateName, setCandidateName] = useState('');
-    const [candidateEmail, setCandidateEmail] = useState('');
     const [error, setError] = useState('');
 
     const onDrop = (acceptedFiles) => {
         const uploadFile = acceptedFiles[0];
         if (uploadFile) {
-            // Поддерживаем больше форматов
             const allowedTypes = [
                 'application/pdf',
                 'application/msword',
@@ -26,7 +23,7 @@ export default function ResumeUploadForm({ vacancyId, onSuccess }) {
                 return;
             }
 
-            if (uploadFile.size > 20 * 1024 * 1024) { // 20MB
+            if (uploadFile.size > 20 * 1024 * 1024) {
                 setError('Размер файла не должен превышать 20MB');
                 return;
             }
@@ -48,8 +45,8 @@ export default function ResumeUploadForm({ vacancyId, onSuccess }) {
     });
 
     const handleUpload = async () => {
-        if (!file || !candidateName || !candidateEmail) {
-            setError('Заполните все поля и выберите файл');
+        if (!file) {
+            setError('Пожалуйста, выберите файл');
             return;
         }
 
@@ -60,8 +57,7 @@ export default function ResumeUploadForm({ vacancyId, onSuccess }) {
             const formData = new FormData();
             formData.append('file', file);
             formData.append('vacancy_id', vacancyId);
-            formData.append('candidate_name', candidateName);
-            formData.append('candidate_email', candidateEmail);
+            // ✅ Убираем отправку candidate_name и candidate_email - их нет в модели
 
             const token = getToken();
             const response = await fetch('/api/resumes', {
@@ -74,13 +70,11 @@ export default function ResumeUploadForm({ vacancyId, onSuccess }) {
 
             if (response.ok) {
                 const result = await response.json();
-                toast.success('Резюме успешно загружено!');
+                toast.success('Резюме успешно загружено! Данные кандидата будут извлечены автоматически.');
                 onSuccess?.(result);
 
                 // Сброс формы
                 setFile(null);
-                setCandidateName('');
-                setCandidateEmail('');
             } else {
                 const error = await response.json();
                 toast.error(error.error || 'Ошибка загрузки резюме');
@@ -99,33 +93,12 @@ export default function ResumeUploadForm({ vacancyId, onSuccess }) {
         <div className="bg-white p-6 rounded-xl shadow-lg border">
             <h3 className="text-xl font-semibold mb-4">📤 Загрузить резюме</h3>
 
-            {/* Поля для данных кандидата */}
-            <div className="space-y-4 mb-6">
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Имя кандидата *
-                    </label>
-                    <input
-                        type="text"
-                        value={candidateName}
-                        onChange={(e) => setCandidateName(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Введите имя кандидата"
-                    />
-                </div>
-
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Email кандидата *
-                    </label>
-                    <input
-                        type="email"
-                        value={candidateEmail}
-                        onChange={(e) => setCandidateEmail(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="candidate@example.com"
-                    />
-                </div>
+            {/* Информационное сообщение */}
+            <div className="bg-blue-50 p-4 rounded-lg mb-6">
+                <p className="text-sm text-blue-800">
+                    💡 <strong>Автоматическое извлечение данных:</strong> Система автоматически извлечет
+                    имя кандидата, email и другую информацию из загруженного резюме с помощью ИИ.
+                </p>
             </div>
 
             {/* Drag & Drop зона */}
@@ -177,10 +150,10 @@ export default function ResumeUploadForm({ vacancyId, onSuccess }) {
             {/* Кнопка загрузки */}
             <button
                 onClick={handleUpload}
-                disabled={loading || !file || !candidateName || !candidateEmail}
+                disabled={loading || !file}
                 className={`
           w-full mt-6 px-6 py-3 rounded-lg font-medium transition-colors
-          ${loading || !file || !candidateName || !candidateEmail
+          ${loading || !file
                     ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                     : 'bg-blue-600 text-white hover:bg-blue-700'
                 }

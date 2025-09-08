@@ -51,6 +51,12 @@ export default function VacanciesPage() {
         }
     };
 
+    // Функция для ограничения текста
+    const truncateText = (text, maxLength = 100) => {
+        if (!text) return 'Описание не указано';
+        return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+    };
+
     return (
         <Layout title="Список вакансий">
             <Head>
@@ -89,7 +95,7 @@ export default function VacanciesPage() {
                                     <thead className="bg-gray-50">
                                     <tr>
                                         <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">Название</th>
-                                        <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">Статус</th>
+                                        <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">Описание</th>
                                         <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">Дата создания</th>
                                         <th className="px-6 py-4 text-right text-sm font-medium text-gray-900">Действия</th>
                                     </tr>
@@ -98,24 +104,12 @@ export default function VacanciesPage() {
                                     {vacancies.map((vacancy) => (
                                         <tr key={vacancy.id} className="hover:bg-gray-50 transition-colors">
                                             <td className="px-6 py-4">
-                                                <div>
-                                                    <p className="font-medium text-gray-900">{vacancy.title}</p>
-                                                    {vacancy.description && (
-                                                        <p className="text-sm text-gray-600 mt-1 line-clamp-2">
-                                                            {vacancy.description.substring(0, 100)}
-                                                            {vacancy.description.length > 100 ? '...' : ''}
-                                                        </p>
-                                                    )}
-                                                </div>
+                                                <p className="font-medium text-gray-900">{vacancy.title}</p>
                                             </td>
                                             <td className="px-6 py-4">
-                          <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
-                              vacancy.status === 'active'
-                                  ? 'bg-green-100 text-green-800'
-                                  : 'bg-gray-100 text-gray-800'
-                          }`}>
-                            {vacancy.status === 'active' ? '🟢 Активна' : '⚪ Неактивна'}
-                          </span>
+                                                <p className="text-sm text-gray-600 leading-relaxed">
+                                                    {truncateText(vacancy.description, 120)}
+                                                </p>
                                             </td>
                                             <td className="px-6 py-4 text-gray-600">
                                                 {new Date(vacancy.created_at).toLocaleDateString('ru-RU')}
@@ -125,7 +119,7 @@ export default function VacanciesPage() {
                                                     href={`/vacancies/${vacancy.id}`}
                                                     className="inline-flex items-center px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium"
                                                 >
-                                                    👁️ Подробнее
+                                                    Подробнее
                                                 </Link>
                                             </td>
                                         </tr>

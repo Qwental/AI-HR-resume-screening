@@ -3,12 +3,182 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import Layout from '../../components/Layout';
-import CandidateCard from '../../components/CandidateCard';
 import ResumeUploadForm from '../../components/ResumeUploadForm';
 import { useAuthStore } from '../../utils/store';
 import { getToken } from '../../utils/auth';
 import { toast } from 'react-hot-toast';
 
+// Компонент для отображения резюме
+function ResumeCard({ resume, index }) {
+    const [isTextExpanded, setIsTextExpanded] = useState(false);
+
+    // Функция для извлечения имени кандидата из resume_analysis_jsonb или текста
+    const getCandidateName = (resume) => {
+        try {
+            // Сначала пробуем извлечь из анализа
+            if (resume.resume_analysis_jsonb) {
+                let analysisData;
+                if (typeof resume.resume_analysis_jsonb === 'string') {
+                    analysisData = JSON.parse(resume.resume_analysis_jsonb);
+                } else {
+                    analysisData = resume.resume_analysis_jsonb;
+                }
+
+                // Ищем имя в различных местах анализа
+                if (analysisData.candidate_name) return analysisData.candidate_name;
+                if (analysisData.personal_info?.name) return analysisData.personal_info.name;
+                if (analysisData.name) return analysisData.name;
+            }
+
+            // Если не нашли в анализе, пробуем извлечь из текста (простой поиск)
+            if (resume.text) {
+                const lines = resume.text.split('\n').slice(0, 5); // Первые 5 строк
+                for (const line of lines) {
+                    const trimmed = line.trim();
+                    // Простая эвристика: строка длиной от 2 до 50 символов, содержащая только буквы и пробелы
+                    if (trimmed.length > 2 && trimmed.length < 50 && /^[а-яёА-ЯЁa-zA-Z\s]+$/.test(trimmed)) {
+                        return trimmed;
+                    }
+                }
+            }
+
+            return `Кандидат ${index + 1}`;
+        } catch (error) {
+            console.error('Error extracting candidate name:', error);
+            return `Кандидат ${index + 1}`;
+        }
+    };
+
+    // Функция для извлечения оценки из resume_analysis_jsonb
+    const getResumeScore = (resume) => {
+        try {
+            if (!resume.resume_analysis_jsonb) return 0;
+
+            let analysisData;
+            if (typeof resume.resume_analysis_jsonb === 'string') {
+                analysisData = JSON.parse(resume.resume_analysis_jsonb);
+            } else {
+                analysisData = resume.resume_analysis_jsonb;
+            }
+
+            const finalScore = analysisData?.overall_assessment?.final_score;
+            if (typeof finalScore === 'number') {
+                return Math.min(finalScore, 100); // Ограничиваем максимум до 100
+            }
+            return 0;
+        } catch (error) {
+            console.error('Error parsing resume analysis:', error);
+            return 0;
+        }
+    };
+
+    const candidateName = getCandidateName(resume);
+    const score = getResumeScore(resume);
+    const maxTextLength = 200;
+    const truncatedText = resume.text && resume.text.length > maxTextLength
+        ? resume.text.substring(0, maxTextLength) + '...'
+        : resume.text;
+
+    // Функция для определения цвета оценки
+    const getScoreColor = (score) => {
+        if (score >= 80) return 'text-green-600 bg-green-100';
+        if (score >= 60) return 'text-yellow-600 bg-yellow-100';
+        if (score >= 40) return 'text-orange-600 bg-orange-100';
+        return 'text-red-600 bg-red-100';
+    };
+
+    return (
+        <div className="bg-gray-50 p-6 rounded-lg border hover:shadow-md transition-shadow">
+            <div className="flex items-start justify-between mb-4">
+                <div className="flex-1">
+                    <div className="flex items-center space-x-3 mb-2">
+                        <h4 className="font-medium text-gray-900">
+                            {candidateName}
+                        </h4>
+
+                        {/* Отображение оценки */}
+                        <div className={`px-3 py-1 rounded-full text-sm font-semibold ${getScoreColor(score)}`}>
+                            🎯 {score.toFixed(0)} баллов
+                        </div>
+                    </div>
+
+                    {/* Email из поля mail */}
+                    {resume.mail && (
+                        <p className="text-sm text-gray-600 mb-1">
+                            📧 {resume.mail}
+                        </p>
+                    )}
+
+                    {/* Дата загрузки */}
+                    <p className="text-sm text-gray-500 mb-2">
+                        📅 {new Date(resume.created_at || Date.now()).toLocaleDateString('ru-RU')}
+                    </p>
+
+                    {/* Статус */}
+                    {resume.status && (
+                        <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
+                            resume.status === 'processed' || resume.status === 'Прошел парсер'
+                                ? 'bg-green-100 text-green-800'
+                                : resume.status === 'processing'
+                                    ? 'bg-yellow-100 text-yellow-800'
+                                    : resume.status === 'error'
+                                        ? 'bg-red-100 text-red-800'
+                                        : 'bg-gray-100 text-gray-800'
+                        }`}>
+              {resume.status}
+            </span>
+                    )}
+                </div>
+
+                {/* Кнопка скачать */}
+                {resume.file_url && (
+                    <a
+                        href={resume.file_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium"
+                    >
+                        📄 Скачать
+                    </a>
+                )}
+            </div>
+
+            {/* Текст резюме с возможностью развернуть */}
+            {resume.text && (
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                    <div className="flex items-center justify-between mb-2">
+                        <h5 className="text-sm font-medium text-gray-700">📄 Текст резюме:</h5>
+                        {resume.text.length > maxTextLength && (
+                            <button
+                                onClick={() => setIsTextExpanded(!isTextExpanded)}
+                                className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                            >
+                                {isTextExpanded ? '🔼 Свернуть' : '🔽 Раскрыть полностью'}
+                            </button>
+                        )}
+                    </div>
+
+                    <div className="bg-white p-3 rounded border text-sm text-gray-700 leading-relaxed">
+            <pre className="whitespace-pre-wrap font-sans">
+              {isTextExpanded ? resume.text : truncatedText}
+            </pre>
+                    </div>
+                </div>
+            )}
+
+            {/* Дополнительная информация об анализе */}
+            {score > 0 && (
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                    <p className="text-xs text-gray-500">
+                        ⚡ Результат автоматического анализа соответствия вакансии
+                    </p>
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ОСНОВНОЙ КОМПОНЕНТ - ЭКСПОРТИРУЕТСЯ ПО УМОЛЧАНИЮ
 export default function VacancyDetail() {
     const router = useRouter();
     const { id } = router.query;
@@ -249,58 +419,13 @@ export default function VacancyDetail() {
                             </p>
                         </div>
                     ) : (
-                        <div className="space-y-4">
+                        <div className="space-y-6">
                             {resumes.map((resume, index) => (
-                                <div key={resume.id || index} className="bg-gray-50 p-6 rounded-lg border">
-                                    <div className="flex items-start justify-between">
-                                        <div className="flex-1">
-                                            <h4 className="font-medium text-gray-900">
-                                                {resume.candidate_name || `Кандидат ${index + 1}`}
-                                            </h4>
-                                            {resume.candidate_email && (
-                                                <p className="text-sm text-gray-600 mt-1">
-                                                    📧 {resume.candidate_email}
-                                                </p>
-                                            )}
-                                            <p className="text-sm text-gray-500 mt-1">
-                                                📅 {new Date(resume.created_at || Date.now()).toLocaleDateString('ru-RU')}
-                                            </p>
-                                            {resume.status && (
-                                                <span className={`inline-block px-2 py-1 mt-2 rounded-full text-xs font-medium ${
-                                                    resume.status === 'processed'
-                                                        ? 'bg-green-100 text-green-800'
-                                                        : resume.status === 'processing'
-                                                            ? 'bg-yellow-100 text-yellow-800'
-                                                            : resume.status === 'error'
-                                                                ? 'bg-red-100 text-red-800'
-                                                                : 'bg-gray-100 text-gray-800'
-                                                }`}>
-                          {resume.status}
-                        </span>
-                                            )}
-                                        </div>
-
-                                        {resume.file_url && (
-                                            <a
-                                                href={resume.file_url}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm"
-                                            >
-                                                📄 Скачать
-                                            </a>
-                                        )}
-                                    </div>
-
-                                    {resume.text && (
-                                        <div className="mt-4 pt-4 border-t border-gray-200">
-                                            <p className="text-sm text-gray-700 line-clamp-3">
-                                                {resume.text.substring(0, 200)}
-                                                {resume.text.length > 200 ? '...' : ''}
-                                            </p>
-                                        </div>
-                                    )}
-                                </div>
+                                <ResumeCard
+                                    key={resume.id || index}
+                                    resume={resume}
+                                    index={index}
+                                />
                             ))}
                         </div>
                     )}
