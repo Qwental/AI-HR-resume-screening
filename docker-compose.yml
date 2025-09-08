@@ -61,6 +61,8 @@ services:
       - AWS_S3_BUCKET=${MINIO_BUCKET}
       - GIN_MODE=${GIN_MODE}
       - RABBITMQ_URL=${RABBITMQ_URL}
+      - JWT_SECRET=${JWT_SECRET} # 🔥 ДОБАВИТЬ ЭТУ СТРОКУ
+
       - PORT=8081
     depends_on:
       db:

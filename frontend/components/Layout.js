@@ -1,8 +1,13 @@
+// components/Layout.js
 import Link from "next/link";
 import { useState, useEffect } from "react";
+import { useRouter } from 'next/router';
+import { useAuthStore } from '../utils/store';
 
 export default function Layout({ title, children }) {
   const [dark, setDark] = useState(false);
+  const router = useRouter();
+  const { user, logout, isAuthenticated } = useAuthStore();
 
   useEffect(() => {
     // Проверяем тему из localStorage
@@ -23,30 +28,90 @@ export default function Layout({ title, children }) {
     }
   }, [dark]);
 
-  return (
-    <div className="min-h-screen bg-white dark:bg-black text-gray-900 dark:text-gray-100 transition-colors duration-300">
-      <header className="sticky top-0 z-10 bg-white/70 dark:bg-black/70 backdrop-blur border-b border-gray-200 dark:border-gray-800 transition-colors duration-300">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-brand"></div>
-            <span className="font-semibold">{title || "AI HR Platform"}</span>
-          </div>
-          <nav className="flex items-center gap-4 text-sm">
-            <Link href="/dashboard" className="hover:text-brand">Дашборд</Link>
-            <Link href="/vacancies" className="hover:text-brand">Вакансии</Link>
-            <Link href="/login" className="hover:text-brand">Вход</Link>
+  const handleLogout = () => {
+    logout();
+    router.push('/login');
+  };
 
-          </nav>
-          <button
-            className="btn"
-            onClick={() => setDark((v) => !v)}
-            aria-label="Toggle theme"
-          >
-            {dark ? "☀️" : "🌙"}
-          </button>
-        </div>
-      </header>
-      <main className="max-w-7xl mx-auto px-4 py-6">{children}</main>
-    </div>
+  return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+        {/* Навигационная панель */}
+        <nav className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between h-16">
+              <div className="flex items-center">
+                <Link href="/">
+                  <a className="text-xl font-bold text-gray-900 dark:text-white">
+                    HR Avatar
+                  </a>
+                </Link>
+
+                {isAuthenticated && (
+                    <div className="ml-10 flex space-x-4">
+                      <Link href="/vacancies">
+                        <a className="text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white px-3 py-2 text-sm font-medium">
+                          Вакансии
+                        </a>
+                      </Link>
+                    </div>
+                )}
+              </div>
+
+              <div className="flex items-center space-x-4">
+                {/* Переключатель темы */}
+                <button
+                    onClick={() => setDark(!dark)}
+                    className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                >
+                  {dark ? "🌞" : "🌙"}
+                </button>
+
+                {isAuthenticated ? (
+                    <>
+                      {user && (
+                          <span className="text-sm text-gray-600 dark:text-gray-400">
+                                            {user.username || user.email}
+                                        </span>
+                      )}
+                      <button
+                          onClick={handleLogout}
+                          className="text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white px-3 py-2 text-sm font-medium"
+                      >
+                        Выход
+                      </button>
+                    </>
+                ) : (
+                    <div className="flex space-x-2">
+                      <Link href="/login">
+                        <a className="text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white px-3 py-2 text-sm font-medium">
+                          Вход
+                        </a>
+                      </Link>
+                      <Link href="/register">
+                        <a className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 text-sm font-medium rounded-md">
+                          Регистрация
+                        </a>
+                      </Link>
+                    </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </nav>
+
+        {/* Основной контент */}
+        <main className="flex-1">
+          {title && (
+              <header className="bg-white dark:bg-gray-800 shadow-sm">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+                  <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+                    {title}
+                  </h1>
+                </div>
+              </header>
+          )}
+          {children}
+        </main>
+      </div>
   );
 }

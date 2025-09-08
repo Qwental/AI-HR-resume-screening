@@ -152,3 +152,30 @@ func (h *Handler) GetProfile(c *gin.Context) {
 
 	utils.SuccessResponse(c, http.StatusOK, ProfileResponse{User: *user})
 }
+
+// ValidateToken принимает токен и возвращает данные пользователя, если токен валиден.
+// Этот эндпоинт предназначен для внутренней коммуникации между сервисами.
+func (h *Handler) ValidateToken(c *gin.Context) {
+	var req struct {
+		Token string `json:"token" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request: missing token"})
+		return
+	}
+
+	// ✅ ИСПРАВЛЕНО: Используем вашу существующую функцию ValidateToken
+	claims, err := utils.ValidateToken(req.Token)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token", "details": err.Error()})
+		return
+	}
+
+	// Токен валиден, возвращаем payload
+	c.JSON(http.StatusOK, gin.H{
+		"user_id":  claims.UserID,
+		"role":     claims.Role,
+		"is_valid": true,
+	})
+}

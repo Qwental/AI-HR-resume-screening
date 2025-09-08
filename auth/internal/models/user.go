@@ -14,7 +14,7 @@ type User struct {
 	Role         string    `json:"role" gorm:"type:varchar(255);not null;check:role IN ('hr_specialist','candidate','admin');default:'hr_specialist'"` // обновленные роли
 	IsActive     bool      `json:"is_active" gorm:"default:true"`
 	CreatedAt    time.Time `json:"created_at" gorm:"autoCreateTime" db:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at" gorm:"autoUpdateTime" db:"updated_at"`
+	UpdatedAt    time.Time `json:"updated_at" gorm:"autoUpdateTime"`
 }
 
 func (User) TableName() string {

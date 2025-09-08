@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import { setToken } from '../utils/auth';
+import { useAuthStore } from '../utils/store';
 
 export default function LoginPage() {
     const [email, setEmail] = useState('');
@@ -11,17 +12,17 @@ export default function LoginPage() {
     const [loading, setLoading] = useState(false);
     const router = useRouter();
 
+    // ✅ ДОБАВЛЯЕМ: получаем функцию login из store
+    const login = useAuthStore(state => state.login);
+
     const handleSubmit = async (e) => {
         e.preventDefault();
-
         if (!email || !password) {
             setError('Пожалуйста, введите email и пароль.');
             return;
         }
-
         setError('');
         setLoading(true);
-
         try {
             const response = await fetch('/api/auth/login', {
                 method: 'POST',
@@ -30,12 +31,12 @@ export default function LoginPage() {
                 },
                 body: JSON.stringify({ email, password }),
             });
-
             const data = await response.json();
-
             if (response.ok) {
-                // Сохраняем токен
-                setToken(data.access_token);
+                // ✅ ИСПРАВЛЕНО: Сохраняем токен и обновляем состояние
+                setToken(data.data.access_token);
+                login(data.data.access_token, data.data.user);
+
                 // Перенаправляем на дашборд
                 router.push('/dashboard');
             } else {
@@ -55,10 +56,8 @@ export default function LoginPage() {
                 <title>Вход - HR Avatar</title>
                 <meta name="description" content="Войти в систему управления персоналом HR Avatar" />
             </Head>
-
             <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
                 <div className="sm:mx-auto sm:w-full sm:max-w-md">
-                    {/* Делаем заголовок ссылкой на главную страницу */}
                     <Link href="/">
                         <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 transition-colors">
                             HR Avatar
@@ -68,7 +67,6 @@ export default function LoginPage() {
                         Система управления персоналом
                     </p>
                 </div>
-
                 <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
                     <div className="bg-white dark:bg-gray-800 py-8 px-4 shadow sm:rounded-lg sm:px-10">
                         <form className="space-y-6" onSubmit={handleSubmit}>
@@ -90,7 +88,6 @@ export default function LoginPage() {
                                     />
                                 </div>
                             </div>
-
                             <div>
                                 <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                                     Пароль:
@@ -109,7 +106,6 @@ export default function LoginPage() {
                                     />
                                 </div>
                             </div>
-
                             {error && (
                                 <div className="rounded-md bg-red-50 p-4">
                                     <div className="text-sm text-red-700">
@@ -117,7 +113,6 @@ export default function LoginPage() {
                                     </div>
                                 </div>
                             )}
-
                             <div>
                                 <button
                                     type="submit"
@@ -127,7 +122,6 @@ export default function LoginPage() {
                                     {loading ? 'Вход...' : 'Войти'}
                                 </button>
                             </div>
-
                             <div className="text-center">
                                 <p className="text-sm text-gray-600 dark:text-gray-400">
                                     Нет аккаунта?{' '}

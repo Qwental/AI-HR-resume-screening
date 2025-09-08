@@ -28,7 +28,7 @@ WORKDIR /root/
 COPY --from=builder /app/main .
 
 # Копируем статические файлы
-COPY --from=builder /app/static ./static
+#COPY --from=builder /app/static ./static
 
 # Открываем порт
 EXPOSE 8080

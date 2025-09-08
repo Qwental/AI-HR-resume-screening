@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import { setToken } from '../utils/auth';
+import { useAuthStore } from '../utils/store';
 
 export default function RegisterPage() {
     const [username, setUsername] = useState('');
@@ -13,39 +15,39 @@ export default function RegisterPage() {
     const [loading, setLoading] = useState(false);
     const router = useRouter();
 
+    // ✅ ДОБАВЛЯЕМ: получаем функцию login из store
+    const login = useAuthStore(state => state.login);
+
     const handleSubmit = async (e) => {
         e.preventDefault();
-
         if (!username || !surname || !email || !password) {
             setError('Пожалуйста, заполните все поля.');
             return;
         }
-
         if (password.length < 6) {
             setError('Пароль должен содержать минимум 6 символов.');
             return;
         }
-
         if (password !== confirmPassword) {
             setError('Пароли не совпадают.');
             return;
         }
-
         setError('');
         setLoading(true);
-
         try {
             const response = await fetch('/api/auth/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, surname, email, password }),
             });
-
             const data = await response.json();
-
             if (response.ok) {
-                alert('Регистрация прошла успешно! Теперь вы можете войти.');
-                router.push('/login');
+                // ✅ ИСПРАВЛЕНО: Сохраняем токен и обновляем состояние
+                setToken(data.data.access_token);
+                login(data.data.access_token, data.data.user);
+
+                // ✅ ИСПРАВЛЕНО: Сразу перенаправляем на дашборд
+                router.push('/dashboard');
             } else {
                 setError(data.message || 'Ошибка регистрации');
             }
@@ -63,11 +65,9 @@ export default function RegisterPage() {
                 <title>Регистрация — HR Avatar</title>
                 <meta name="description" content="Создать аккаунт в HR Avatar" />
             </Head>
-
             <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
                 <div className="max-w-md w-full space-y-8">
                     <div className="sm:mx-auto sm:w-full sm:max-w-md">
-                        {/* Делаем заголовок ссылкой на главную страницу */}
                         <Link href="/">
                             <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 transition-colors">
                                 HR Avatar
@@ -94,7 +94,6 @@ export default function RegisterPage() {
                                     className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                 />
                             </div>
-
                             <div>
                                 <label htmlFor="surname" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                                     Фамилия
@@ -110,7 +109,6 @@ export default function RegisterPage() {
                                     className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                 />
                             </div>
-
                             <div>
                                 <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                                     Email
@@ -127,7 +125,6 @@ export default function RegisterPage() {
                                     className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                 />
                             </div>
-
                             <div>
                                 <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                                     Пароль
@@ -146,7 +143,6 @@ export default function RegisterPage() {
                                     Минимум 6 символов
                                 </p>
                             </div>
-
                             <div>
                                 <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                                     Подтвердите пароль
@@ -163,13 +159,11 @@ export default function RegisterPage() {
                                 />
                             </div>
                         </div>
-
                         {error && (
                             <div className="rounded-md bg-red-50 p-4 text-red-700">
                                 {error}
                             </div>
                         )}
-
                         <div>
                             <button
                                 type="submit"
@@ -179,7 +173,6 @@ export default function RegisterPage() {
                                 {loading ? 'Регистрация...' : 'Зарегистрироваться'}
                             </button>
                         </div>
-
                         <div className="text-sm text-center text-gray-600 dark:text-gray-400">
                             Уже есть аккаунт?{' '}
                             <Link href="/login" className="font-medium text-blue-600 hover:text-blue-500">
