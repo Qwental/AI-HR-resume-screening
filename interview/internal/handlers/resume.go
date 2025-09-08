@@ -85,9 +85,24 @@ func (h *ResumeHandler) GetDownloadLink(c *gin.Context) {
 }
 
 // GET /api/vacancies/:vacancy_id/resumes
-func (h *ResumeHandler) GetByVacancy(c *gin.Context) {
-	vacancyID := c.Param("vacancy_id")
+//func (h *ResumeHandler) GetByVacancy(c *gin.Context) {
+//	vacancyID := c.Param("vacancy_id")
+//
+//	resumes, err := h.svc.GetResumesByVacancy(c.Request.Context(), vacancyID)
+//	if err != nil {
+//		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get resumes"})
+//		return
+//	}
+//
+//	c.JSON(http.StatusOK, gin.H{
+//		"count":   len(resumes),
+//		"resumes": resumes,
+//	})
+//}
 
+// GET /api/vacancies/:id/resumes
+func (h *ResumeHandler) GetByVacancy(c *gin.Context) {
+	vacancyID := c.Param("id") // ← ИСПРАВЛЕНО: используй "id" вместо "vacancy_id"
 	resumes, err := h.svc.GetResumesByVacancy(c.Request.Context(), vacancyID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get resumes"})

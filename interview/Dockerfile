@@ -1,40 +1,36 @@
+# Dockerfile для Interview Service
 FROM golang:1.24-alpine AS builder
 
-# Устанавливаем необходимые пакеты
+# Устанавливаем git для загрузки зависимостей
 RUN apk add --no-cache git
 
-# Создаем рабочую директорию
 WORKDIR /app
 
-# Копируем go.mod и go.sum для кэширования зависимостей
+# Копируем go mod файлы
 COPY go.mod go.sum ./
-
-# Загружаем зависимости
 RUN go mod download
 
-# Копируем весь исходный код
+# Копируем весь код
 COPY . .
 
 # Собираем приложение
-# CGO_ENABLED=0 для статической сборки
-# -ldflags="-w -s" для уменьшения размера бинарника
 RUN go build -o main ./cmd/main.go
-# Этап 2: Финальный образ
+
+# Финальный образ
 FROM alpine:latest
 
-# Устанавливаем ca-certificates для HTTPS и timezone data
+# Устанавливаем CA сертификаты для HTTPS
 RUN apk --no-cache add ca-certificates
 
-# Создаем рабочую директорию
-WORKDIR /app
+WORKDIR /root/
 
-# Копируем скомпилированный бинарник из builder этапа
+# Копируем бинарник
 COPY --from=builder /app/main .
 
-#Копируем .env файл (если нужен)
-COPY --from=builder /app/.env .env
+# Копируем миграции
 
-# Открываем порт (должен совпадать с PORT в переменных окружения)
+# Открываем порт
 EXPOSE 8081
+
 # Запускаем приложение
 CMD ["./main"]

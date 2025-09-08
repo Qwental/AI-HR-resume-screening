@@ -1,3 +1,0 @@
-DROP TABLE IF EXISTS interviews;
-DROP TABLE IF EXISTS resumes;
-DROP TABLE IF EXISTS vacancies;

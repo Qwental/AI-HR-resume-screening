@@ -15,6 +15,8 @@ type ResumeRepository interface {
 	UpdateStatusAndResult(ctx context.Context, id, status string, result map[string]interface{}) error
 	UpdateResult(ctx context.Context, id string, result map[string]interface{}) error
 	Update(ctx context.Context, resume *models.Resume) error
+	UpdateText(ctx context.Context, id, text string) error // ← добавлено
+
 }
 
 type resumeRepository struct {
@@ -86,4 +88,9 @@ func (r *resumeRepository) UpdateResult(ctx context.Context, id string, result m
 		Model(&models.Resume{}).
 		Where("id = ?", id).
 		Updates(updates).Error
+func (r *resumeRepository) UpdateText(ctx context.Context, id, text string) error {
+	return r.db.WithContext(ctx).
+		Model(&models.Resume{}).
+		Where("id = ?", id).
+		Update("text", text).Error
 }

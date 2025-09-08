@@ -18,17 +18,72 @@ func NewVacancyHandler(svc service.VacancyService) *VacancyHandler {
 }
 
 // POST /api/vacancies
+//
+//	func (h *VacancyHandler) Create(c *gin.Context) {
+//		title := c.PostForm("title")
+//		description := c.PostForm("description")
+//		usersID := c.PostForm("users_id")
+//
+//		weightSoft, _ := strconv.Atoi(c.DefaultPostForm("weight_soft", "33"))
+//		weightHard, _ := strconv.Atoi(c.DefaultPostForm("weight_hard", "33"))
+//		weightCase, _ := strconv.Atoi(c.DefaultPostForm("weight_case", "34"))
+//
+//		if title == "" || usersID == "" {
+//			c.JSON(http.StatusBadRequest, gin.H{"error": "title and users_id are required"})
+//			return
+//		}
+//
+//		fileHeader, err := c.FormFile("file")
+//		if err != nil {
+//			c.JSON(http.StatusBadRequest, gin.H{"error": "file is required"})
+//			return
+//		}
+//
+//		file, err := fileHeader.Open()
+//		if err != nil {
+//			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to open file"})
+//			return
+//		}
+//		defer file.Close()
+//
+//		vacancy := &models.Vacancy{
+//			Title:       title,
+//			Description: &description,
+//			UsersID:     usersID,
+//			WeightSoft:  weightSoft,
+//			WeightHard:  weightHard,
+//			WeightCase:  weightCase,
+//		}
+//
+//		err = h.svc.CreateVacancy(c.Request.Context(), vacancy, file, fileHeader.Filename)
+//		if err != nil {
+//			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+//			return
+//		}
+//
+//		c.JSON(http.StatusCreated, vacancy)
+//	}
 func (h *VacancyHandler) Create(c *gin.Context) {
+	// 🔥 ИСПРАВЛЕНИЕ: Получаем ID пользователя из контекста, а не из формы.
+	// Это значение должен устанавливать ваш auth middleware.
+	hrSpecialistID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated or user_id not found in token"})
+		return
+	}
+
+	// Конвертируем ID в строку, если это необходимо для вашей модели
+	// (Лучше, если модель `Vacancy` будет принимать `uint` для `UsersID`)
+	usersIDStr := strconv.FormatUint(uint64(hrSpecialistID.(uint)), 10)
+
 	title := c.PostForm("title")
 	description := c.PostForm("description")
-	usersID := c.PostForm("users_id")
-
 	weightSoft, _ := strconv.Atoi(c.DefaultPostForm("weight_soft", "33"))
 	weightHard, _ := strconv.Atoi(c.DefaultPostForm("weight_hard", "33"))
 	weightCase, _ := strconv.Atoi(c.DefaultPostForm("weight_case", "34"))
 
-	if title == "" || usersID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "title and users_id are required"})
+	if title == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "title is required"})
 		return
 	}
 
@@ -40,7 +95,7 @@ func (h *VacancyHandler) Create(c *gin.Context) {
 
 	file, err := fileHeader.Open()
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to open file"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to open file"})
 		return
 	}
 	defer file.Close()
@@ -48,7 +103,7 @@ func (h *VacancyHandler) Create(c *gin.Context) {
 	vacancy := &models.Vacancy{
 		Title:       title,
 		Description: &description,
-		UsersID:     usersID,
+		UsersID:     usersIDStr, // 🔥 ИСПОЛЬЗУЕМ ID ИЗ ТОКЕНА
 		WeightSoft:  weightSoft,
 		WeightHard:  weightHard,
 		WeightCase:  weightCase,

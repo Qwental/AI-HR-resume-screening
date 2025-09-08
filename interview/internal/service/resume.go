@@ -3,14 +3,15 @@ package service
 import (
 	"context"
 	"fmt"
+	"gorm.io/datatypes"
+	"interview/internal/broker"
+	"interview/internal/models"
+	"interview/internal/repository"
+	"interview/internal/storage"
 	"io"
 	"path/filepath"
 	"strings"
 	"time"
-
-	"interview/internal/models"
-	"interview/internal/repository"
-	"interview/internal/storage"
 )
 
 const MaxResumeFileSize = 20 * 1024 * 1024 // 20MB
@@ -30,22 +31,40 @@ type resumeService struct {
 	repo        repository.ResumeRepository
 	storage     *storage.S3Storage
 	vacancyRepo repository.VacancyRepository
+	publisher   broker.Publisher // будет  отпправлять в брокер
+
 }
 
-func NewResumeService(repo repository.ResumeRepository, storage *storage.S3Storage, vacancyRepo repository.VacancyRepository) ResumeService {
-	return &resumeService{repo: repo, storage: storage, vacancyRepo: vacancyRepo}
+func NewResumeService(
+	repo repository.ResumeRepository,
+	storage *storage.S3Storage,
+	vacancyRepo repository.VacancyRepository,
+	publisher broker.Publisher,
+) ResumeService {
+	return &resumeService{
+		repo:        repo,
+		storage:     storage,
+		vacancyRepo: vacancyRepo,
+		publisher:   publisher,
+	}
 }
 
 func (s *resumeService) validateFileType(filename string) error {
-	allowedExts := []string{".pdf", ".doc", ".docx", ".txt", ".rtf"}
-	ext := strings.ToLower(filepath.Ext(filename))
+	if filename == "" {
+		return fmt.Errorf("filename cannot be empty")
+	}
 
-	for _, allowed := range allowedExts {
-		if ext == allowed {
+	ext := strings.ToLower(filepath.Ext(filename))
+	allowedExts := []string{".docx", ".pdf", ".txt"}
+
+	for _, allowedExt := range allowedExts {
+		if ext == allowedExt {
 			return nil
 		}
 	}
-	return fmt.Errorf("unsupported file type: %s", ext)
+
+	return fmt.Errorf("unsupported file type: %s. Allowed types: %s",
+		ext, strings.Join(allowedExts, ", "))
 }
 
 func (s *resumeService) CreateResume(ctx context.Context, resume *models.Resume, file io.Reader, filename string) error {
@@ -63,90 +82,26 @@ func (s *resumeService) CreateResume(ctx context.Context, resume *models.Resume,
 		return fmt.Errorf("vacancy not found: %w", err)
 	}
 
-	/* go func() {
-		time.Sleep(1 * time.Second)
+	// Читаем файл с ограничением размера
+	fileData, err := io.ReadAll(io.LimitReader(file, MaxResumeFileSize))
+	if err != nil {
+		return fmt.Errorf("failed to read file: %w", err)
+	}
 
-		fileData, err := io.ReadAll(io.LimitReader(file, MaxResumeFileSize))
-		if err != nil {
-			log.Printf("failed to read file: %w", err)
-		}
+	// Дополнительная валидация содержимого файла
+	if len(fileData) == 0 {
+		return fmt.Errorf("file is empty")
+	}
 
-		resumeText, err := extractResumeFromDocx(bytes.NewReader(fileData))
-		if err != nil {
-			log.Printf("failed to extract resume text: %w", err)
-		}
+	fileType := detectFileType(fileData)
+	if fileType == FileTypeUnknown {
+		return fmt.Errorf("unsupported file format. Please upload DOCX, PDF or TXT file")
+	}
 
-		var vacancyData *Job
-		if vacancy.TextJSONB != nil && len(vacancy.TextJSONB) > 0 {
-			var vacancyDataMap map[string]interface{}
-			if err := json.Unmarshal(vacancy.TextJSONB, &vacancyDataMap); err == nil {
-				if structuredData, ok := vacancyDataMap["structured_data"]; ok {
-					if jsonBytes, err := json.Marshal(structuredData); err == nil {
-						vacancyData = &Job{}
-						json.Unmarshal(jsonBytes, vacancyData)
-						log.Printf("Using existing vacancy data for vacancy %s", vacancy.ID)
-					}
-				}
-			}
-		} else if vacancy.StorageKey != "" {
-			log.Printf("Extracting vacancy data from file for vacancy %s", vacancy.ID)
+	log.Printf("📄 Processing %s file: %s (%d bytes)", getFileTypeName(fileType), filename, len(fileData))
 
-			var err error
-			vacancyData, err = ExtractVacancyFromS3Key(context.Background(), s.storage, vacancy.StorageKey)
-			if err != nil {
-				log.Printf("Failed to extract vacancy data for vacancy %s: %v", vacancy.ID, err)
-			} else {
-				vacancyDataMap := map[string]interface{}{
-					"structured_data": vacancyData,
-					"extracted_at":    time.Now(),
-				}
-
-				if jsonData, err := json.Marshal(vacancyDataMap); err == nil {
-					vacancy.TextJSONB = datatypes.JSON(jsonData)
-
-					if err := s.vacancyRepo.Update(context.Background(), vacancy); err != nil {
-						log.Printf("Failed to update vacancy %s: %v", vacancy.ID, err)
-					} else {
-						log.Printf("Vacancy %s data extracted and saved", vacancy.ID)
-					}
-				}
-			}
-		} else {
-			log.Printf("Vacancy %s has no file to extract data from", vacancy.ID)
-		}
-
-		if resumeText != "" || vacancyData != nil {
-			messageData := map[string]interface{}{
-				"resume_id":    resume.ID,
-				"vacancy_id":   vacancy.ID,
-				"resume_text":  resumeText,
-				"vacancy_data": vacancyData,
-				"timestamp":    time.Now(),
-				"status":       "ready_for_analysis",
-			}
-
-			// TODO: Отправляем в message broker для AI анализа
-			log.Printf("Sending to message broker: resume %s for vacancy %s", resume.ID, vacancy.ID)
-			// s.messageBroker.Send("resume.analysis", messageData)
-
-			// Для отладки - показываем что извлекли
-			log.Printf("Extracted data summary:")
-			log.Printf("- Resume text length: %d chars", len(resumeText))
-			if vacancyData != nil {
-				log.Printf("- Vacancy title: %s", vacancyData.Название)
-				log.Printf("- Vacancy requirements: %.100s...", vacancyData.Требования)
-			}
-		} else {
-			log.Printf("No data extracted for resume %s and vacancy %s", resume.ID, vacancy.ID)
-		}
-
-	}()
-
-	*/
-
-	limitedReader := io.LimitReader(file, MaxResumeFileSize)
-
-	storageKey, err := s.storage.UploadResume(ctx, limitedReader, filename)
+	// Загружаем файл в S3
+	storageKey, err := s.storage.UploadResume(ctx, bytes.NewReader(fileData), filename)
 	if err != nil {
 		return fmt.Errorf("file upload error: %w", err)
 	}
@@ -156,11 +111,155 @@ func (s *resumeService) CreateResume(ctx context.Context, resume *models.Resume,
 	resume.CreatedAt = time.Now()
 
 	if err := s.repo.Create(ctx, resume); err != nil {
-		s.storage.DeleteFile(ctx, storageKey)
+		// Если создание записи в БД не удалось, удаляем файл из S3
+		if deleteErr := s.storage.DeleteFile(ctx, storageKey); deleteErr != nil {
+			log.Printf("❌ Failed to cleanup uploaded file after DB error: %v", deleteErr)
+		}
 		return fmt.Errorf("failed to create resume: %w", err)
 	}
 
+	log.Printf("✅ Resume created successfully: %s", resume.ID)
+
+	// Асинхронно обрабатываем и отправляем в брокер
+	go s.processResumeAsync(resume, fileData, vacancy)
+
 	return nil
+}
+
+// ← Новый метод для асинхронной обработки
+func (s *resumeService) processResumeAsync(resume *models.Resume, fileData []byte, vacancy *models.Vacancy) {
+	ctx := context.Background()
+
+	// Извлекаем текст из резюме с использованием универсальной функции
+	resumeText, err := ExtractTextFromFile(fileData, resume.StorageKey)
+	if err != nil {
+		log.Printf("❌ Не удалось извлечь текст резюме для %s: %v", resume.ID, err)
+
+		// Обновляем статус резюме на error
+		if updateErr := s.repo.UpdateStatus(ctx, resume.ID, ResumeStatusError); updateErr != nil {
+			log.Printf("Failed to update resume status to error: %v", updateErr)
+		}
+		return
+	}
+
+	log.Printf("✅ Успешно извлечен текст резюме %s: %d символов", resume.ID, len(resumeText))
+
+	// --- НОВОЕ: сохраняем ПЛЕЙН-ТЕКСТ в БД (колонка text)
+	if err := s.repo.UpdateText(ctx, resume.ID, resumeText); err != nil {
+		log.Printf("❌ Не удалось сохранить текст резюме в БД для %s: %v", resume.ID, err)
+		// продолжаем процесс, чтобы не блокировать анализ
+	} else {
+		log.Printf("💾 Текст резюме %s сохранен в БД (колонка text)", resume.ID)
+	}
+	// --- КОНЕЦ НОВОГО БЛОКА ---
+
+	// Подготавливаем текст вакансии
+	var vacancyTextJSON datatypes.JSON
+	var vacancyData *Job
+
+	if vacancy.TextJSONB != nil && len(vacancy.TextJSONB) > 0 {
+		// Используем уже существующие данные вакансии
+		vacancyTextJSON = vacancy.TextJSONB
+
+		var vacancyDataMap map[string]interface{}
+		if err := json.Unmarshal(vacancy.TextJSONB, &vacancyDataMap); err == nil {
+			if structuredData, ok := vacancyDataMap["structured_data"]; ok {
+				if jsonBytes, err := json.Marshal(structuredData); err == nil {
+					vacancyData = &Job{}
+					json.Unmarshal(jsonBytes, vacancyData)
+					log.Printf("Using existing vacancy data for vacancy %s", vacancy.ID)
+				}
+			}
+		}
+	} else if vacancy.StorageKey != "" {
+		// Извлекаем данные из файла вакансии
+		log.Printf("Extracting vacancy data from file for vacancy %s", vacancy.ID)
+
+		vacancyData, err = ExtractVacancyFromS3Key(ctx, s.storage, vacancy.StorageKey)
+		if err != nil {
+			log.Printf("Failed to extract vacancy data for vacancy %s: %v", vacancy.ID, err)
+		} else {
+			// Сохраняем извлеченные данные вакансии
+			vacancyDataMap := map[string]interface{}{
+				"structured_data": vacancyData,
+				"extracted_at":    time.Now(),
+			}
+
+			if jsonData, err := json.Marshal(vacancyDataMap); err == nil {
+				vacancy.TextJSONB = datatypes.JSON(jsonData)
+				vacancyTextJSON = vacancy.TextJSONB
+
+				if err := s.vacancyRepo.Update(ctx, vacancy); err != nil {
+					log.Printf("Failed to update vacancy %s: %v", vacancy.ID, err)
+				} else {
+					log.Printf("Vacancy %s data extracted and saved", vacancy.ID)
+				}
+			}
+		}
+	}
+
+	// Если не удалось получить данные вакансии, создаем базовый JSON
+	if vacancyTextJSON == nil {
+		basicVacancyData := map[string]interface{}{
+			"title":       vacancy.Title,
+			"description": vacancy.Description,
+			"created_at":  vacancy.CreatedAt,
+		}
+		if jsonData, err := json.Marshal(basicVacancyData); err == nil {
+			vacancyTextJSON = datatypes.JSON(jsonData)
+		}
+	}
+
+	// Подготавливаем текст резюме в JSON формате
+	resumeTextJSON := datatypes.JSON("{}")
+	if resumeText != "" {
+		resumeDataMap := map[string]interface{}{
+			"text":         resumeText,
+			"extracted_at": time.Now(),
+			"file_name":    resume.StorageKey,
+			"file_type":    string(getFileTypeName(detectFileType(fileData))),
+			"size_bytes":   len(fileData),
+		}
+		if jsonData, err := json.Marshal(resumeDataMap); err == nil {
+			resumeTextJSON = datatypes.JSON(jsonData)
+		}
+	}
+
+	// 🚀 Создаем и отправляем сообщение в брокер
+	message := broker.ResumeMessage{
+		ID:          resume.ID,
+		VacancyID:   resume.VacancyID,
+		TextResume:  resumeTextJSON,     // JSON с текстом резюме
+		TextVacancy: vacancyTextJSON,    // JSON с текстом вакансии
+		WeightSoft:  vacancy.WeightSoft, // Вес soft skills
+		WeightHard:  vacancy.WeightHard, // Вес hard skills
+		WeightCase:  vacancy.WeightCase, // Вес кейсов/опыта
+	}
+
+	// Отправляем сообщение
+	if err := s.publisher.PublishResumeMessage(ctx, message); err != nil {
+		log.Printf("Failed to publish resume message for %s: %v", resume.ID, err)
+
+		// Обновляем статус резюме на error
+		if updateErr := s.repo.UpdateStatus(ctx, resume.ID, ResumeStatusError); updateErr != nil {
+			log.Printf("Failed to update resume status to error: %v", updateErr)
+		}
+	} else {
+		log.Printf("✅ Successfully published resume message: resume %s for vacancy %s", resume.ID, resume.VacancyID)
+
+		// Обновляем статус резюме на processing
+		if updateErr := s.repo.UpdateStatus(ctx, resume.ID, ResumeStatusProcessing); updateErr != nil {
+			log.Printf("Failed to update resume status to processing: %v", updateErr)
+		}
+	}
+
+	// Логируем для отладки
+	if resumeText != "" {
+		log.Printf("📄 Resume text extracted: %d characters", len(resumeText))
+	}
+	if vacancyData != nil {
+		log.Printf("📋 Vacancy data: %s", vacancyData.Название)
+	}
 }
 
 func (s *resumeService) GetResume(ctx context.Context, id string) (*models.Resume, error) {
