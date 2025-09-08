@@ -1,7 +1,9 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"gorm.io/datatypes"
 	"interview/internal/broker"
@@ -9,6 +11,7 @@ import (
 	"interview/internal/repository"
 	"interview/internal/storage"
 	"io"
+	"log"
 	"path/filepath"
 	"strings"
 	"time"
@@ -77,7 +80,7 @@ func (s *resumeService) CreateResume(ctx context.Context, resume *models.Resume,
 	}
 
 	//_ это vacancy
-	_, err := s.vacancyRepo.GetByID(ctx, resume.VacancyID)
+	vacancy, err := s.vacancyRepo.GetByID(ctx, resume.VacancyID)
 	if err != nil {
 		return fmt.Errorf("vacancy not found: %w", err)
 	}
@@ -136,7 +139,7 @@ func (s *resumeService) processResumeAsync(resume *models.Resume, fileData []byt
 		log.Printf("❌ Не удалось извлечь текст резюме для %s: %v", resume.ID, err)
 
 		// Обновляем статус резюме на error
-		if updateErr := s.repo.UpdateStatus(ctx, resume.ID, ResumeStatusError); updateErr != nil {
+		if updateErr := s.repo.UpdateStatus(ctx, resume.ID, "error"); updateErr != nil {
 			log.Printf("Failed to update resume status to error: %v", updateErr)
 		}
 		return
@@ -241,16 +244,16 @@ func (s *resumeService) processResumeAsync(resume *models.Resume, fileData []byt
 		log.Printf("Failed to publish resume message for %s: %v", resume.ID, err)
 
 		// Обновляем статус резюме на error
-		if updateErr := s.repo.UpdateStatus(ctx, resume.ID, ResumeStatusError); updateErr != nil {
+		if updateErr := s.repo.UpdateStatus(ctx, resume.ID, "error"); updateErr != nil {
 			log.Printf("Failed to update resume status to error: %v", updateErr)
 		}
 	} else {
 		log.Printf("✅ Successfully published resume message: resume %s for vacancy %s", resume.ID, resume.VacancyID)
 
-		// Обновляем статус резюме на processing
-		if updateErr := s.repo.UpdateStatus(ctx, resume.ID, ResumeStatusProcessing); updateErr != nil {
-			log.Printf("Failed to update resume status to processing: %v", updateErr)
-		}
+		//// Обновляем статус резюме на processing
+		//if updateErr := s.repo.UpdateStatus(ctx, resume.ID, ResumeStatusProcessing); updateErr != nil {
+		//	log.Printf("Failed to update resume status to processing: %v", updateErr)
+		//}
 	}
 
 	// Логируем для отладки

@@ -88,6 +88,8 @@ func (r *resumeRepository) UpdateResult(ctx context.Context, id string, result m
 		Model(&models.Resume{}).
 		Where("id = ?", id).
 		Updates(updates).Error
+}
+
 func (r *resumeRepository) UpdateText(ctx context.Context, id, text string) error {
 	return r.db.WithContext(ctx).
 		Model(&models.Resume{}).
