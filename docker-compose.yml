@@ -126,7 +126,6 @@ services:
     restart: unless-stopped
     command: ["python", "consumer.py"]
 
-
   minio:
     image: minio/minio:latest
     container_name: ai-hr-minio
@@ -197,7 +196,6 @@ services:
         condition: service_started
     networks:
       - ai_hr_net
-
 
 networks:
   ai_hr_net:

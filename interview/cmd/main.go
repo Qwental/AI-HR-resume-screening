@@ -169,6 +169,9 @@ func main() {
 		vacancies.GET("/:id", vacancyHandler.GetByID)
 		vacancies.GET("/:id/download", vacancyHandler.GetDownloadLink)
 
+		// ✅ ДОБАВЬТЕ ЭТУ СТРОКУ - роут для получения резюме по вакансии
+		vacancies.GET("/:id/resumes", resumeHandler.GetByVacancy)
+
 		// Группа действий только для HR специалистов
 		hrVacancyActions := vacancies.Group("")
 		hrVacancyActions.Use(middleware.RequireRoleMiddleware("hr_specialist"))

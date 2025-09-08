@@ -19,85 +19,133 @@ export default function VacanciesPage() {
             return;
         }
 
-        const fetchVacancies = async () => {
-            setLoading(true);
-            setError('');
-            const token = getToken();
-
-            try {
-                // ✅ ПРАВИЛЬНЫЙ URL и АВТОРИЗАЦИЯ
-                const response = await fetch('/api/vacancies', {
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                    },
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    setVacancies(data.vacancies || []);
-                } else {
-                    const errorData = await response.json();
-                    setError(errorData.error || 'Не удалось загрузить вакансии.');
-                }
-            } catch (error) {
-                console.error('Error fetching vacancies:', error);
-                setError('Ошибка сети при загрузке вакансий.');
-            } finally {
-                setLoading(false);
-            }
-        };
-
         fetchVacancies();
     }, [isAuthenticated, router]);
 
+    const fetchVacancies = async () => {
+        setLoading(true);
+        setError('');
+        const token = getToken();
+
+        try {
+            const response = await fetch('/api/vacancies', {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                },
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                setVacancies(data.vacancies || []);
+            } else if (response.status === 401) {
+                router.push('/login');
+            } else {
+                const errorData = await response.json();
+                setError(errorData.error || 'Не удалось загрузить вакансии.');
+            }
+        } catch (error) {
+            console.error('Error fetching vacancies:', error);
+            setError('Ошибка сети при загрузке вакансий.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
-        <Layout>
+        <Layout title="Список вакансий">
             <Head>
                 <title>Список вакансий - HR Avatar</title>
             </Head>
-            <div className="max-w-7xl mx-auto py-10 px-4">
-                <div className="flex justify-between items-center mb-8">
-                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Вакансии</h1>
-                    <Link href="/vacancies/create" className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md">
-                        + Создать вакансию
+
+            <div className="max-w-6xl mx-auto">
+                <div className="flex items-center justify-between mb-8">
+                    <h1 className="text-3xl font-bold text-gray-900">📋 Вакансии</h1>
+                    <Link
+                        href="/vacancies/create"
+                        className="inline-flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                        ➕ Создать вакансию
                     </Link>
                 </div>
 
-                {loading && <p>Загрузка вакансий...</p>}
-                {error && <div className="bg-red-100 text-red-700 p-4 rounded-md">{error}</div>}
+                {loading && (
+                    <div className="text-center py-12">
+                        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                        <p className="text-gray-600">Загрузка вакансий...</p>
+                    </div>
+                )}
+
+                {error && (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                        <p className="text-red-700">{error}</p>
+                    </div>
+                )}
 
                 {!loading && !error && (
-                    <div className="bg-white dark:bg-gray-800 shadow-lg rounded-lg overflow-hidden">
-                        <table className="min-w-full">
-                            <thead className="bg-gray-50 dark:bg-gray-700">
-                            <tr>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Название</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Статус</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Дата создания</th>
-                                <th className="relative px-6 py-3"><span className="sr-only">Действия</span></th>
-                            </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                            {vacancies.length > 0 ? vacancies.map((vacancy) => (
-                                <tr key={vacancy.id} className="hover:bg-gray-50 dark:hover:bg-gray-600">
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{vacancy.title}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                                        <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Активна</span>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{new Date(vacancy.created_at).toLocaleDateString()}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                        <a href="#" className="text-indigo-600 hover:text-indigo-900">Подробнее</a>
-                                    </td>
-                                </tr>
-                            )) : (
-                                <tr>
-                                    <td colSpan="4" className="text-center py-10 text-gray-500">
-                                        Нет активных вакансий. <Link href="/vacancies/create" className="text-indigo-600">Создайте первую!</Link>
-                                    </td>
-                                </tr>
-                            )}
-                            </tbody>
-                        </table>
+                    <div className="bg-white rounded-xl shadow-lg border overflow-hidden">
+                        {vacancies.length > 0 ? (
+                            <div className="overflow-x-auto">
+                                <table className="w-full">
+                                    <thead className="bg-gray-50">
+                                    <tr>
+                                        <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">Название</th>
+                                        <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">Статус</th>
+                                        <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">Дата создания</th>
+                                        <th className="px-6 py-4 text-right text-sm font-medium text-gray-900">Действия</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-200">
+                                    {vacancies.map((vacancy) => (
+                                        <tr key={vacancy.id} className="hover:bg-gray-50 transition-colors">
+                                            <td className="px-6 py-4">
+                                                <div>
+                                                    <p className="font-medium text-gray-900">{vacancy.title}</p>
+                                                    {vacancy.description && (
+                                                        <p className="text-sm text-gray-600 mt-1 line-clamp-2">
+                                                            {vacancy.description.substring(0, 100)}
+                                                            {vacancy.description.length > 100 ? '...' : ''}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4">
+                          <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
+                              vacancy.status === 'active'
+                                  ? 'bg-green-100 text-green-800'
+                                  : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {vacancy.status === 'active' ? '🟢 Активна' : '⚪ Неактивна'}
+                          </span>
+                                            </td>
+                                            <td className="px-6 py-4 text-gray-600">
+                                                {new Date(vacancy.created_at).toLocaleDateString('ru-RU')}
+                                            </td>
+                                            <td className="px-6 py-4 text-right">
+                                                <Link
+                                                    href={`/vacancies/${vacancy.id}`}
+                                                    className="inline-flex items-center px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium"
+                                                >
+                                                    👁️ Подробнее
+                                                </Link>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <div className="text-center py-12">
+                                <div className="text-6xl mb-4">📭</div>
+                                <h3 className="text-xl font-medium text-gray-900 mb-2">Нет активных вакансий</h3>
+                                <p className="text-gray-600 mb-6">Создайте первую вакансию, чтобы начать работу</p>
+                                <Link
+                                    href="/vacancies/create"
+                                    className="inline-flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                                >
+                                    ➕ Создать вакансию
+                                </Link>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

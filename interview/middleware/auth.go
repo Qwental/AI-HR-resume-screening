@@ -87,10 +87,18 @@ func RequireRoleMiddleware(requiredRole string) gin.HandlerFunc {
 			return
 		}
 
-		if role.(string) != requiredRole {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions"})
+		userRole := role.(string)
+
+		// Возможные варианты: "hrspecialist", "hr_specialist", "hr"
+		if userRole != requiredRole {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"error":         "Insufficient permissions",
+				"required_role": requiredRole,
+				"user_role":     userRole,
+			})
 			return
 		}
+
 		c.Next()
 	}
 }
