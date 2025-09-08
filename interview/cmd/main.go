@@ -57,6 +57,15 @@ func main() {
 	)
 	log.Println("S3 storage initialized")
 
+	log.Println("Initializing RabbitMQ connection...")
+	rabbitMQURL := getEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
+	rabbitmq, err := service.NewRabbitMQService(rabbitMQURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to RabbitMQ: %v", err)
+	}
+	defer rabbitmq.Close()
+	log.Println("RabbitMQ connected successfully")
+
 	// Создаем repositories
 	log.Println("Initializing repositories...")
 	vacancyRepo := repository.NewVacancyRepository(database)
@@ -69,6 +78,8 @@ func main() {
 	vacancySvc := service.NewVacancyService(vacancyRepo, s3Storage)
 	resumeSvc := service.NewResumeService(resumeRepo, s3Storage, vacancyRepo)
 	interviewSvc := service.NewInterviewService(interviewRepo)
+	aiSvc := service.NewAIService(rabbitmq)
+	chatSvc := service.NewChatService(aiSvc, resumeSvc, vacancySvc)
 	log.Println("Services initialized")
 
 	// Настраиваем Gin режим
@@ -78,7 +89,7 @@ func main() {
 
 	// Создаем роутер
 	log.Println("Setting up routes...")
-	router := handlers.SetupRouter(vacancySvc, resumeSvc, interviewSvc)
+	router := handlers.SetupRouter(vacancySvc, resumeSvc, interviewSvc, aiSvc, chatSvc)
 	log.Println("Routes configured")
 
 	// Настраиваем сервер

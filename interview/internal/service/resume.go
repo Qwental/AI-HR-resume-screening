@@ -15,14 +15,6 @@ import (
 
 const MaxResumeFileSize = 20 * 1024 * 1024 // 20MB
 
-const (
-	ResumeStatusPending    = "pending"
-	ResumeStatusProcessing = "processing"
-	ResumeStatusApproved   = "approved"
-	ResumeStatusRejected   = "rejected"
-	ResumeStatusError      = "error"
-)
-
 type ResumeService interface {
 	CreateResume(ctx context.Context, resume *models.Resume, file io.Reader, filename string) error
 	GetResume(ctx context.Context, id string) (*models.Resume, error)
@@ -160,7 +152,7 @@ func (s *resumeService) CreateResume(ctx context.Context, resume *models.Resume,
 	}
 
 	resume.StorageKey = storageKey
-	resume.Status = ResumeStatusPending
+	resume.Status = "Прошел парсер"
 	resume.CreatedAt = time.Now()
 
 	if err := s.repo.Create(ctx, resume); err != nil {
@@ -223,28 +215,10 @@ func (s *resumeService) DeleteResume(ctx context.Context, id string) error {
 }
 
 func (s *resumeService) UpdateStatus(ctx context.Context, id, status string) error {
-	validStatuses := []string{ResumeStatusPending, ResumeStatusProcessing, ResumeStatusApproved, ResumeStatusRejected, ResumeStatusError}
-
-	isValid := false
-	for _, validStatus := range validStatuses {
-		if status == validStatus {
-			isValid = true
-			break
-		}
-	}
-
-	if !isValid {
-		return fmt.Errorf("invalid status: %s", status)
-	}
-
 	return s.repo.UpdateStatus(ctx, id, status)
 }
 
 func (s *resumeService) UpdateStatusAndResult(ctx context.Context, id, status string, result map[string]interface{}) error {
-	if err := s.UpdateStatus(ctx, id, status); err != nil {
-		return err
-	}
-
 	return s.repo.UpdateStatusAndResult(ctx, id, status, result)
 }
 

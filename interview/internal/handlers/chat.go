@@ -45,7 +45,7 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 	}
 
 	// Создаем или получаем сессию чата
-	session, err := h.getOrCreateSession(interview.ID)
+	session, err := h.getOrCreateSession(interview)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to initialize chat session"})
 		return
@@ -57,7 +57,7 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 	}
 
 	candidateMsg := &models.ChatMessage{
-		Type:    models.MessageTypeText,
+		Type:    models.MessageTypeAnswer,
 		Content: req.Content,
 		Sender:  "candidate",
 	}
@@ -119,10 +119,17 @@ func (h *ChatHandler) GetStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, status)
 }
 
-func (h *ChatHandler) getOrCreateSession(interviewID string) (*models.ChatSession, error) {
-	session, err := h.chatSvc.GetSession(interviewID)
+func (h *ChatHandler) getOrCreateSession(interview *models.Interview) (*models.ChatSession, error) {
+	session, err := h.chatSvc.GetSession(interview.ID)
 	if err != nil {
-		return h.chatSvc.CreateSession(interviewID)
+		// Получаем resumeID
+		var resumeID string
+		if interview.ResumeID != nil {
+			resumeID = *interview.ResumeID
+		}
+
+		// Создаем сессию с полными данными
+		return h.chatSvc.CreateSession(interview.ID, resumeID, interview.VacancyID)
 	}
 	return session, nil
 }
