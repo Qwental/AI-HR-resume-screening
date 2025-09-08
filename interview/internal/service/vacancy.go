@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"encoding/json" // <-- Добавлен импорт
 	"fmt"
+	"gorm.io/datatypes"
 	"io"
 	"path/filepath"
 	"strings"
@@ -55,31 +57,55 @@ func (s *vacancyService) validateFileType(filename string) error {
 }
 
 func (s *vacancyService) CreateVacancy(ctx context.Context, vacancy *models.Vacancy, file io.Reader, filename string) error {
+	// 1. Валидация входных данных (веса, тип файла)
 	if err := s.validateWeights(vacancy); err != nil {
 		return err
 	}
-
 	if file == nil {
 		return fmt.Errorf("file is required to create vacancy")
 	}
-
 	if err := s.validateFileType(filename); err != nil {
 		return err
 	}
 
+	// 2. Загрузка файла в S3
 	limitedReader := io.LimitReader(file, MaxVacancyFileSize)
-
 	storageKey, err := s.storage.UploadVacancyFile(ctx, limitedReader, filename)
 	if err != nil {
 		return fmt.Errorf("file upload error: %w", err)
 	}
 
+	// 3. Извлечение структурированных данных из файла
+	extractedData, err := ExtractVacancyFromS3Key(ctx, s.storage, storageKey)
+	if err != nil {
+		// Важно: если парсинг не удался, удаляем загруженный файл, чтобы не хранить мусор
+		s.storage.DeleteFile(ctx, storageKey)
+		return fmt.Errorf("failed to extract data from file %s: %w", storageKey, err)
+	}
+
+	// 4. Формирование целевой JSON структуры
+	finalJSONData := map[string]interface{}{
+		"extracted_at":    time.Now().UTC().Format(time.RFC3339Nano),
+		"structured_data": extractedData, // Структура Job будет автоматически преобразована в JSON
+	}
+
+	// 5. Преобразование карты в JSON-байт
+	jsonBytes, err := json.Marshal(finalJSONData)
+	if err != nil {
+		s.storage.DeleteFile(ctx, storageKey)
+		return fmt.Errorf("failed to marshal extracted data to JSON: %w", err)
+	}
+
+	// 6. Заполнение полей модели Vacancy
 	vacancy.StorageKey = storageKey
 	vacancy.CreatedAt = time.Now()
+	vacancy.TextJSONB = datatypes.JSON(jsonBytes) // <--- ВОТ КЛЮЧЕВОЙ МОМЕНТ
 
+	// 7. Сохранение в базу данных
 	if err := s.repo.Create(ctx, vacancy); err != nil {
+		// Если не удалось сохранить в БД, также удаляем файл из S3
 		s.storage.DeleteFile(ctx, storageKey)
-		return fmt.Errorf("failed to create vacancy: %w", err)
+		return fmt.Errorf("failed to create vacancy in repository: %w", err)
 	}
 
 	return nil
