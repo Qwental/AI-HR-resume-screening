@@ -1,9 +1,7 @@
 package service
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"gorm.io/datatypes"
 	"interview/internal/broker"
@@ -11,21 +9,12 @@ import (
 	"interview/internal/repository"
 	"interview/internal/storage"
 	"io"
-	"log"
 	"path/filepath"
 	"strings"
 	"time"
 )
 
 const MaxResumeFileSize = 20 * 1024 * 1024 // 20MB
-
-const (
-	ResumeStatusPending    = "pending"
-	ResumeStatusProcessing = "processing"
-	ResumeStatusApproved   = "approved"
-	ResumeStatusRejected   = "rejected"
-	ResumeStatusError      = "error"
-)
 
 type ResumeService interface {
 	CreateResume(ctx context.Context, resume *models.Resume, file io.Reader, filename string) error
@@ -35,6 +24,7 @@ type ResumeService interface {
 	DeleteResume(ctx context.Context, id string) error
 	UpdateStatus(ctx context.Context, id, status string) error
 	UpdateStatusAndResult(ctx context.Context, id, status string, result map[string]interface{}) error
+	UpdateResult(ctx context.Context, id string, result map[string]interface{}) error
 }
 
 type resumeService struct {
@@ -86,7 +76,8 @@ func (s *resumeService) CreateResume(ctx context.Context, resume *models.Resume,
 		return err
 	}
 
-	vacancy, err := s.vacancyRepo.GetByID(ctx, resume.VacancyID)
+	//_ это vacancy
+	_, err := s.vacancyRepo.GetByID(ctx, resume.VacancyID)
 	if err != nil {
 		return fmt.Errorf("vacancy not found: %w", err)
 	}
@@ -116,7 +107,7 @@ func (s *resumeService) CreateResume(ctx context.Context, resume *models.Resume,
 	}
 
 	resume.StorageKey = storageKey
-	resume.Status = ResumeStatusPending
+	resume.Status = "Прошел парсер"
 	resume.CreatedAt = time.Now()
 
 	if err := s.repo.Create(ctx, resume); err != nil {
@@ -323,27 +314,14 @@ func (s *resumeService) DeleteResume(ctx context.Context, id string) error {
 }
 
 func (s *resumeService) UpdateStatus(ctx context.Context, id, status string) error {
-	validStatuses := []string{ResumeStatusPending, ResumeStatusProcessing, ResumeStatusApproved, ResumeStatusRejected, ResumeStatusError}
-
-	isValid := false
-	for _, validStatus := range validStatuses {
-		if status == validStatus {
-			isValid = true
-			break
-		}
-	}
-
-	if !isValid {
-		return fmt.Errorf("invalid status: %s", status)
-	}
-
 	return s.repo.UpdateStatus(ctx, id, status)
 }
 
 func (s *resumeService) UpdateStatusAndResult(ctx context.Context, id, status string, result map[string]interface{}) error {
-	if err := s.UpdateStatus(ctx, id, status); err != nil {
-		return err
-	}
-
 	return s.repo.UpdateStatusAndResult(ctx, id, status, result)
+}
+
+func (s *resumeService) UpdateResult(ctx context.Context, id string, result map[string]interface{}) error {
+
+	return s.repo.UpdateResult(ctx, id, result)
 }

@@ -74,8 +74,10 @@ func main() {
 	// Создаем services
 	log.Println("Initializing services...")
 	vacancySvc := service.NewVacancyService(vacancyRepo, s3Storage)
-	service.NewResumeService(resumeRepo, s3Storage, vacancyRepo, publisher)
-	service.NewInterviewService(interviewRepo)
+	resumeSvc := service.NewResumeService(resumeRepo, s3Storage, vacancyRepo)
+	interviewSvc := service.NewInterviewService(interviewRepo)
+	aiSvc := service.NewAIService(rabbitmq)
+	chatSvc := service.NewChatService(aiSvc, resumeSvc, vacancySvc)
 	log.Println("Services initialized")
 
 	// Настраиваем Gin режим
