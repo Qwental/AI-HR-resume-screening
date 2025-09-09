@@ -150,3 +150,5 @@ func (h *ResumeHandler) Delete(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "resume deleted successfully"})
 }
+
+// DELETE /api/resumes/:id

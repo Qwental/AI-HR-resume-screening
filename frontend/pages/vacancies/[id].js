@@ -9,13 +9,14 @@ import { getToken } from '../../utils/auth';
 import { toast } from 'react-hot-toast';
 
 // Компонент для отображения резюме
-function ResumeCard({ resume, index }) {
+function ResumeCard({ resume, index, onDelete }) {
     const [isTextExpanded, setIsTextExpanded] = useState(false);
+    const [isReportExpanded, setIsReportExpanded] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
 
-    // Функция для извлечения имени кандидата из resume_analysis_jsonb или текста
+    // Функция для извлечения имени кандидата
     const getCandidateName = (resume) => {
         try {
-            // Сначала пробуем извлечь из анализа
             if (resume.resume_analysis_jsonb) {
                 let analysisData;
                 if (typeof resume.resume_analysis_jsonb === 'string') {
@@ -24,18 +25,22 @@ function ResumeCard({ resume, index }) {
                     analysisData = resume.resume_analysis_jsonb;
                 }
 
-                // Ищем имя в различных местах анализа
+                // Ищем email в анализе
+                if (analysisData.email && Array.isArray(analysisData.email) && analysisData.email[0]) {
+                    const email = analysisData.email[0];
+                    const namePart = email.split('@')[0];
+                    return namePart.replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                }
+
                 if (analysisData.candidate_name) return analysisData.candidate_name;
                 if (analysisData.personal_info?.name) return analysisData.personal_info.name;
                 if (analysisData.name) return analysisData.name;
             }
 
-            // Если не нашли в анализе, пробуем извлечь из текста (простой поиск)
             if (resume.text) {
-                const lines = resume.text.split('\n').slice(0, 5); // Первые 5 строк
+                const lines = resume.text.split('\n').slice(0, 5);
                 for (const line of lines) {
                     const trimmed = line.trim();
-                    // Простая эвристика: строка длиной от 2 до 50 символов, содержащая только буквы и пробелы
                     if (trimmed.length > 2 && trimmed.length < 50 && /^[а-яёА-ЯЁa-zA-Z\s]+$/.test(trimmed)) {
                         return trimmed;
                     }
@@ -49,10 +54,10 @@ function ResumeCard({ resume, index }) {
         }
     };
 
-    // Функция для извлечения оценки из resume_analysis_jsonb
-    const getResumeScore = (resume) => {
+    // Функция для извлечения оценки и детальной информации
+    const getAnalysisData = (resume) => {
         try {
-            if (!resume.resume_analysis_jsonb) return 0;
+            if (!resume.resume_analysis_jsonb) return { score: 0, skills: null, report: null };
 
             let analysisData;
             if (typeof resume.resume_analysis_jsonb === 'string') {
@@ -61,23 +66,206 @@ function ResumeCard({ resume, index }) {
                 analysisData = resume.resume_analysis_jsonb;
             }
 
-            const finalScore = analysisData?.overall_assessment?.final_score;
-            if (typeof finalScore === 'number') {
-                return Math.min(finalScore, 100); // Ограничиваем максимум до 100
-            }
-            return 0;
+            // Извлекаем общую оценку
+            const finalScore = analysisData?.overall_assessment?.final_score || 0;
+            const score = Math.min(finalScore, 100);
+
+            // Извлекаем баллы по категориям
+            const detailed = analysisData?.detailed_evaluation || {};
+            const skills = {
+                soft: detailed.communication_skills?.score || 0,
+                hard: detailed.primary_skills?.score || 0,
+                case: detailed.work_experience?.score || 0
+            };
+
+            // Генерируем текстовый отчет
+            const report = generateHumanReport(analysisData);
+
+            return { score, skills, report };
         } catch (error) {
             console.error('Error parsing resume analysis:', error);
-            return 0;
+            return { score: 0, skills: null, report: null };
+        }
+    };
+
+    // Функция для генерации человекочитаемого отчета
+    const generateHumanReport = (analysisData) => {
+        try {
+            let report = '';
+
+            // Общая оценка
+            if (analysisData.overall_assessment) {
+                const assessment = analysisData.overall_assessment;
+                report += `📊 ОБЩАЯ ОЦЕНКА\n`;
+                report += `Итоговый балл: ${Math.min(assessment.final_score || 0, 100)}/100\n`;
+                report += `Уровень соответствия: ${getMatchLevelText(assessment.match_level)}\n`;
+                report += `Рекомендация: ${getRecommendationText(assessment.recommendation)}\n`;
+                if (assessment.summary_comment) {
+                    report += `Комментарий: ${assessment.summary_comment}\n`;
+                }
+                report += '\n';
+            }
+
+            // Сильные стороны
+            if (analysisData.strengths && analysisData.strengths.length > 0) {
+                report += `✅ СИЛЬНЫЕ СТОРОНЫ\n`;
+                analysisData.strengths.forEach((strength, index) => {
+                    report += `${index + 1}. ${strength}\n`;
+                });
+                report += '\n';
+            }
+
+            // Опасения
+            if (analysisData.concerns && analysisData.concerns.length > 0) {
+                report += `⚠️ ПОТЕНЦИАЛЬНЫЕ ПРОБЛЕМЫ\n`;
+                analysisData.concerns.forEach((concern, index) => {
+                    report += `${index + 1}. ${concern}\n`;
+                });
+                report += '\n';
+            }
+
+            // Красные флаги
+            if (analysisData.red_flags && analysisData.red_flags.length > 0) {
+                report += `🚩 КРИТИЧЕСКИЕ ЗАМЕЧАНИЯ\n`;
+                analysisData.red_flags.forEach((flag, index) => {
+                    report += `${index + 1}. ${flag}\n`;
+                });
+                report += '\n';
+            }
+
+            // Детальная оценка
+            if (analysisData.detailed_evaluation) {
+                report += `📋 ДЕТАЛЬНАЯ ОЦЕНКА\n`;
+                const detailed = analysisData.detailed_evaluation;
+
+                Object.entries(detailed).forEach(([key, data]) => {
+                    const categoryName = getCategoryName(key);
+                    report += `\n${categoryName}: ${data.score}/100 (${getStatusText(data.status)})\n`;
+                    if (data.comment) report += `  💭 ${data.comment}\n`;
+                    if (data.evidence) report += `  📝 ${data.evidence}\n`;
+                });
+                report += '\n';
+            }
+
+            // Следующие шаги
+            if (analysisData.next_steps && analysisData.next_steps.length > 0) {
+                report += `🎯 РЕКОМЕНДУЕМЫЕ ДЕЙСТВИЯ\n`;
+                analysisData.next_steps.forEach((step, index) => {
+                    report += `${index + 1}. ${step}\n`;
+                });
+                report += '\n';
+            }
+
+            // Анализ зарплатных ожиданий
+            if (analysisData.salary_expectation_analysis) {
+                const salary = analysisData.salary_expectation_analysis;
+                report += `💰 ЗАРПЛАТНЫЕ ОЖИДАНИЯ\n`;
+                if (salary.candidate_expectation) {
+                    report += `Ожидания кандидата: ${salary.candidate_expectation}\n`;
+                }
+                if (salary.market_range) {
+                    report += `Рыночный диапазон: ${salary.market_range}\n`;
+                }
+                if (salary.comment) {
+                    report += `Комментарий: ${salary.comment}\n`;
+                }
+            }
+
+            return report.trim();
+        } catch (error) {
+            console.error('Error generating human report:', error);
+            return 'Ошибка при генерации отчета';
+        }
+    };
+
+    // Вспомогательные функции для текста
+    const getMatchLevelText = (level) => {
+        const levels = {
+            'full_match': 'Полное соответствие',
+            'strong_match': 'Сильное соответствие',
+            'partial_match': 'Частичное соответствие',
+            'weak_match': 'Слабое соответствие',
+            'no_match': 'Не соответствует'
+        };
+        return levels[level] || level;
+    };
+
+    const getRecommendationText = (rec) => {
+        const recommendations = {
+            'strongly_recommend_for_interview': 'Настоятельно рекомендую к собеседованию',
+            'recommend_for_interview': 'Рекомендую к собеседованию',
+            'consider_for_interview': 'Рассмотреть для собеседования',
+            'not_recommend': 'Не рекомендую',
+            'reject': 'Отклонить'
+        };
+        return recommendations[rec] || rec;
+    };
+
+    const getStatusText = (status) => {
+        const statuses = {
+            'full_match': 'отлично',
+            'strong_match': 'хорошо',
+            'partial_match': 'удовлетворительно',
+            'weak_match': 'слабо',
+            'no_match': 'не соответствует'
+        };
+        return statuses[status] || status;
+    };
+
+    const getCategoryName = (key) => {
+        const names = {
+            'education': '🎓 Образование',
+            'location_match': '📍 Локация',
+            'primary_skills': '🔧 Технические навыки',
+            'work_experience': '💼 Опыт работы',
+            'communication_skills': '💬 Коммуникационные навыки'
+        };
+        return names[key] || key;
+    };
+
+    // Функция удаления резюме
+    const handleDelete = async () => {
+        if (!window.confirm('Вы уверены, что хотите удалить это резюме?')) {
+            return;
+        }
+
+        setIsDeleting(true);
+        try {
+            const token = getToken();
+            const response = await fetch(`/api/resumes/${resume.id}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                },
+            });
+
+            if (response.ok) {
+                toast.success('Резюме успешно удалено');
+                onDelete?.(resume.id);
+            } else {
+                const error = await response.json();
+                toast.error(error.error || 'Ошибка при удалении резюме');
+            }
+        } catch (error) {
+            console.error('Error deleting resume:', error);
+            toast.error('Ошибка соединения с сервером');
+        } finally {
+            setIsDeleting(false);
         }
     };
 
     const candidateName = getCandidateName(resume);
-    const score = getResumeScore(resume);
+    const { score, skills, report } = getAnalysisData(resume);
     const maxTextLength = 200;
+    const maxReportLength = 300;
+
     const truncatedText = resume.text && resume.text.length > maxTextLength
         ? resume.text.substring(0, maxTextLength) + '...'
         : resume.text;
+
+    const truncatedReport = report && report.length > maxReportLength
+        ? report.substring(0, maxReportLength) + '...'
+        : report;
 
     // Функция для определения цвета оценки
     const getScoreColor = (score) => {
@@ -96,11 +284,32 @@ function ResumeCard({ resume, index }) {
                             {candidateName}
                         </h4>
 
-                        {/* Отображение оценки */}
+                        {/* Общая оценка */}
                         <div className={`px-3 py-1 rounded-full text-sm font-semibold ${getScoreColor(score)}`}>
                             🎯 {score.toFixed(0)} баллов
                         </div>
                     </div>
+
+                    {/* Детализированные оценки по категориям */}
+                    {skills && (skills.soft > 0 || skills.hard > 0 || skills.case > 0) && (
+                        <div className="flex flex-wrap gap-2 mb-2">
+                            {skills.soft > 0 && (
+                                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium">
+                  💬 Soft: {skills.soft}
+                </span>
+                            )}
+                            {skills.hard > 0 && (
+                                <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium">
+                  🔧 Hard: {skills.hard}
+                </span>
+                            )}
+                            {skills.case > 0 && (
+                                <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-medium">
+                  💼 Опыт: {skills.case}
+                </span>
+                            )}
+                        </div>
+                    )}
 
                     {/* Email из поля mail */}
                     {resume.mail && (
@@ -130,18 +339,56 @@ function ResumeCard({ resume, index }) {
                     )}
                 </div>
 
-                {/* Кнопка скачать */}
-                {resume.file_url && (
-                    <a
-                        href={resume.file_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium"
+                {/* Кнопки действий */}
+                <div className="flex items-center space-x-2">
+                    {resume.file_url && (
+                        <a
+                            href={resume.file_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium"
+                        >
+                            📄 Скачать
+                        </a>
+                    )}
+
+                    {/* Кнопка удаления */}
+                    <button
+                        onClick={handleDelete}
+                        disabled={isDeleting}
+                        className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
+                            isDeleting
+                                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                : 'bg-red-100 text-red-700 hover:bg-red-200'
+                        }`}
                     >
-                        📄 Скачать
-                    </a>
-                )}
+                        {isDeleting ? '⏳' : '🗑️ Удалить'}
+                    </button>
+                </div>
             </div>
+
+            {/* ИИ-анализ кандидата */}
+            {report && (
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                    <div className="flex items-center justify-between mb-2">
+                        <h5 className="text-sm font-medium text-gray-700">🤖 ИИ-анализ кандидата:</h5>
+                        {report.length > maxReportLength && (
+                            <button
+                                onClick={() => setIsReportExpanded(!isReportExpanded)}
+                                className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                            >
+                                {isReportExpanded ? '🔼 Свернуть' : '🔽 Раскрыть полностью'}
+                            </button>
+                        )}
+                    </div>
+
+                    <div className="bg-blue-50 p-3 rounded border text-sm text-gray-700 leading-relaxed">
+            <pre className="whitespace-pre-wrap font-sans">
+              {isReportExpanded ? report : truncatedReport}
+            </pre>
+                    </div>
+                </div>
+            )}
 
             {/* Текст резюме с возможностью развернуть */}
             {resume.text && (
@@ -178,7 +425,7 @@ function ResumeCard({ resume, index }) {
     );
 }
 
-// ОСНОВНОЙ КОМПОНЕНТ - ЭКСПОРТИРУЕТСЯ ПО УМОЛЧАНИЮ
+// ОСНОВНОЙ КОМПОНЕНТ
 export default function VacancyDetail() {
     const router = useRouter();
     const { id } = router.query;
@@ -257,6 +504,11 @@ export default function VacancyDetail() {
     const handleResumeUploaded = (newResume) => {
         toast.success('Резюме успешно загружено!');
         fetchVacancyResumes(); // Обновляем список резюме
+    };
+
+    // ✅ ДОБАВЛЕННАЯ ФУНКЦИЯ обработки удаления
+    const handleResumeDeleted = (deletedResumeId) => {
+        setResumes(prevResumes => prevResumes.filter(resume => resume.id !== deletedResumeId));
     };
 
     if (loading) {
@@ -425,6 +677,7 @@ export default function VacancyDetail() {
                                     key={resume.id || index}
                                     resume={resume}
                                     index={index}
+                                    onDelete={handleResumeDeleted}  // ✅ Передаем обработчик удаления
                                 />
                             ))}
                         </div>
