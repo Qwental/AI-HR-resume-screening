@@ -1,0 +1,202 @@
+services:
+  db:
+    image: postgres:15
+    container_name: ai-hr-db
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./db_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - ai_hr_net
+
+  auth:
+    build: ./auth
+    container_name: ai-hr-auth
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_HOST=db
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_ACCESS_TTL=${JWT_ACCESS_TTL}
+      - JWT_REFRESH_TTL=${JWT_REFRESH_TTL}
+      - GIN_MODE=${GIN_MODE}
+      - RABBITMQ_URL=${RABBITMQ_URL}
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - ai_hr_net
+    restart: unless-stopped
+
+  interview:
+    build: ./interview
+    container_name: ai-hr-interview
+    ports:
+      - "8081:8081"
+    environment:
+      - DB_HOST=db
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - AWS_S3_ENDPOINT=${AWS_S3_ENDPOINT}
+      - AWS_REGION=ru-central-1
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_S3_BUCKET=ai-hr
+      - GIN_MODE=${GIN_MODE}
+      - RABBITMQ_URL=${RABBITMQ_URL}
+      - JWT_SECRET=${JWT_SECRET} # 🔥 ДОБАВИТЬ ЭТУ СТРОКУ
+
+      - PORT=8081
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - ai_hr_net
+    restart: unless-stopped
+
+  cv-review:
+    build: ./ml_services/cv_review
+    container_name: ai-hr-cv-review
+    ports:
+      - "5030:5030"
+    environment:
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_URL=${RABBITMQ_URL}
+      - PROXY_API_TOKEN=${PROXY_API_TOKEN}
+      - TOKEN=${TOKEN}
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - ai_hr_net
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:5030/health" ]
+      interval: 15s        # Чаще проверяем
+      timeout: 5s          # Меньше таймаут
+      retries: 5           # Больше попыток
+      start_period: 30s    # Даем время на старт
+
+
+  cv-consumer:
+    build: ./ml_services/cv_review
+    container_name: ai-hr-cv-consumer
+    environment:
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_URL=${RABBITMQ_URL}
+      - CV_REVIEW_SERVICE=http://cv-review:5030
+      - PYTHONUNBUFFERED=1
+      # 🆕 Добавляем переменные для БД
+      - DB_HOST=db
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - DB_PORT=5432
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      cv-review:
+        condition: service_healthy
+      db:  # 🆕 Добавляем зависимость от БД
+        condition: service_healthy
+    networks:
+      - ai_hr_net
+    restart: unless-stopped
+    command: ["python", "consumer.py"]
+
+  minio:
+    image: minio/minio:latest
+    container_name: ai-hr-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - ./minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - ai_hr_net
+
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: ai-hr-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - ./rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 30s
+      timeout: 30s
+      retries: 3
+    networks:
+      - ai_hr_net
+  # фрагмент docker-compose.yml — добавить в services:
+  frontend:
+    build: ./frontend
+    container_name: ai-hr-frontend
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_BASE=/api
+      - NEXT_PUBLIC_API_BASE_URL=http://auth:8080
+
+    expose:
+      - "3000"
+    depends_on:
+      auth:
+        condition: service_started
+      interview:
+        condition: service_started
+    networks:
+      - ai_hr_net
+
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: ai-hr-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      frontend:
+        condition: service_started
+      auth:
+        condition: service_started
+      interview:
+        condition: service_started
+    networks:
+      - ai_hr_net
+
+networks:
+  ai_hr_net:
+    driver: bridge
